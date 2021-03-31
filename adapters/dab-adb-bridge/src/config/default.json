@@ -1,0 +1,43 @@
+{
+    "mqttBroker": "mqtt://localhost:1883",
+    "adb": {
+        "binary": "~/platform-tools/adb",
+        "device": "deviceIpOrSerialHere",
+        "rebootTimeoutMs": 90000,
+        "minTelemetryMillis": 100
+    },
+    "appMap": {
+        "settings": {
+            "friendlyName": "Android Settings App",
+            "package": "com.android.tv.settings",
+            "intent": ["-n", "com.android.tv.settings/com.android.tv.settings.MainSettings"]
+        },
+        "amazoninstantvideo": {
+            "friendlyName": "Amazon Prime Video",
+            "package": "com.amazon.amazonvideo.livingroom",
+            "intent": ["-a", "android.intent.action.VIEW", "-d", "https://app.primevideo.com/watch"]
+        },
+        "hulu": {
+            "friendlyName": "Hulu",
+            "package": "com.hulu.livingroomplus",
+            "intent": ["-n", "com.hulu.livingroomplus/com.hulu.livingroomplus.WKFactivity"]
+        },
+        "netflix": [
+            {
+                "friendlyName": "Netflix",
+                "package": "com.netflix.ninja",
+                "intent": ["-a", "android.intent.action.VIEW", "-d", "https://www.netflix.com/watch/"]
+            },
+            {
+                "friendlyName": "Netflix",
+                "package": "com.netflix.bolt",
+                "intent": ["-a", "android.intent.action.VIEW", "-d", "https://www.netflix.com/watch/"]
+            }
+        ],
+        "youtube": {
+            "friendlyName": "YouTube",
+            "package": "com.google.android.youtube.tv",
+            "intent": ["-a", "android.intent.action.VIEW", "-d", "https://www.youtube.com/"]
+        }
+    }
+}

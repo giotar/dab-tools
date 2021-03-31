@@ -1,0 +1,16 @@
+{
+    "mqttBroker": "mqtt://localhost:1883",
+    "roku": {
+        "ipAddress": "deviceIpHere",
+        "clientTimeout": 30000,
+        "minTelemetryMillis": 100
+    },
+    "dialNameMap": {
+        "netflix": "Netflix",
+        "prime video": "AmazonInstantVideo",
+        "youtube": "YouTube",
+        "google play movies & tv": "PlayMoviesDIAL"
+    }
+}
+
+

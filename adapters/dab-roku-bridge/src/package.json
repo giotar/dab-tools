@@ -1,0 +1,35 @@
+{
+  "name": "dab-roku-bridge",
+  "version": "1.0.0",
+  "description": "Adapter to translate DAB requests to ECP commands for Roku devices",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node dab_scenario.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/device-access-bus/dab-c-bridge.git"
+  },
+  "keywords": [
+    "nodejs"
+  ],
+  "author": "",
+  "license": "SEE LICENSE IN ./LICENSE",
+  "bugs": {
+    "url": "https://github.com/device-access-bus/dab-roku-bridge/issues"
+  },
+  "homepage": "https://github.com/device-access-bus/dab-roku-bridge#readme",
+  "type": "module",
+  "dependencies": {
+    "async-mqtt": "^2.6.1",
+    "axios": "^0.21.1",
+    "bunyan": "^1.8.15",
+    "config": "^3.3.3",
+    "eventemitter2": "^6.4.3",
+    "fast-xml-parser": "^3.19.0",
+    "he": "^1.2.0",
+    "serialize-error": "^8.0.1",
+    "uuid": "^8.3.2"
+  }
+}
