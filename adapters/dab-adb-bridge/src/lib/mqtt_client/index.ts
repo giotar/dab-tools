@@ -13,7 +13,7 @@
  limitations under the License.
  */
 
-import { connect } from './client.js';
+import {Client, connect} from './client.js';
 
 /**
  * @typedef {Object} Message
@@ -31,9 +31,10 @@ import { connect } from './client.js';
  */
 export class MqttClient {
 
-    #started;
-    #handlers;
-    #mqtt;
+    #started: boolean;
+    #handlers: any[];
+    #mqtt: Client;
+    sub: any;
 
     constructor() {
         this.#started = false;
@@ -43,8 +44,6 @@ export class MqttClient {
 
     /**
      * Associates a function to process incoming requests with a specific topic
-     * @param  {string} path
-     * @param  {HandlerCallback} handler
      */
     handle(path, handler) {
         this.#handlers.push({ path, handler });
@@ -52,11 +51,8 @@ export class MqttClient {
 
     /**
      * Publishes a request to a topic and waits for a response or timeout to occur
-     * @param  {string} topic
-     * @param  {{}} payload
-     * @param  {MqttOptions} [options]
      */
-    request(topic, payload, options) {
+    request(topic: string, payload?: any, options?: any) {
         return this.#mqtt.request.call(this.#mqtt, topic, payload, options);
     }
 
@@ -68,7 +64,7 @@ export class MqttClient {
      * @returns {Subscription} subscription
      */
     subscribe(topic, callback) {
-        return this.#mqtt.subscribe.call(this.#mqtt, topic, callback);
+        return this.#mqtt.subscribe(topic, callback);
     }
 
     /**
@@ -92,11 +88,8 @@ export class MqttClient {
 
     /**
      * Publishes a request to a topic where no response is expected
-     * @param  {string} topic
-     * @param  {{}} payload
-     * @param  {MqttOptions} [options]
      */
-    publish(topic, payload, options) {
+    publish(topic: string, payload?: any, options?: any) {
         return this.#mqtt.publish.call(this.#mqtt, topic, payload, options);
     }
 

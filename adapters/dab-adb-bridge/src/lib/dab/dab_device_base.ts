@@ -17,15 +17,20 @@ import { MqttClient } from '../mqtt_client/index.js';
 import  * as topics  from './dab_topics.js';
 import { readFileSync } from 'fs';
 
-export class DabDeviceInterface {
+export interface DabResponse {
+    status: number;
+    error?: string;
+    [key: string]: any;
+}
+
+export abstract class DabDeviceBase {
+    private telemetry: any;
+    private client: MqttClient;
     /**
      * Constructor for DabDeviceInterface
      * Don't construct this interface directly.
      */
-    constructor() {
-        if (new.target === DabDeviceInterface) {
-            throw new TypeError("Cannot construct Interface instances directly");
-        }
+    protected constructor() {
         this.telemetry = {};
     }
 
@@ -36,24 +41,20 @@ export class DabDeviceInterface {
         this.client = new MqttClient();
 
         //Pre-Init Handler Registration
-        await Promise.all(
-            [
-                this.client.handle(topics.APPLICATIONS_LIST_TOPIC, this.listApps),
-                this.client.handle(topics.APPLICATIONS_LAUNCH_TOPIC, this.launchApp),
-                this.client.handle(topics.APPLICATIONS_EXIT_TOPIC, this.exitApp),
-                this.client.handle(topics.APPLICATIONS_GET_STATE_TOPIC, this.getAppState),
-                this.client.handle(topics.SYSTEM_RESTART_TOPIC, this.restartDevice),
-                this.client.handle(topics.INPUT_KEY_PRESS_TOPIC, this.keyPress),
-                this.client.handle(topics.INPUT_LONG_KEY_PRESS_TOPIC, this.keyPressLong),
-                this.client.handle(topics.SYSTEM_LANGUAGE_SET_TOPIC, this.setSystemLanguage),
-                this.client.handle(topics.SYSTEM_LANGUAGE_GET_TOPIC, this.getSystemLanguage),
-                this.client.handle(topics.DEVICE_TELEMETRY_START_TOPIC, this.startDeviceTelemetry),
-                this.client.handle(topics.DEVICE_TELEMETRY_STOP_TOPIC, this.stopDeviceTelemetry),
-                this.client.handle(topics.APP_TELEMETRY_START_TOPIC, this.startAppTelemetry),
-                this.client.handle(topics.APP_TELEMETRY_STOP_TOPIC, this.stopAppTelemetry),
-                this.client.handle(topics.HEALTH_CHECK_TOPIC, this.healthCheck)
-            ]
-        );
+        this.client.handle(topics.APPLICATIONS_LIST_TOPIC, this.listApps);
+        this.client.handle(topics.APPLICATIONS_LAUNCH_TOPIC, this.launchApp);
+        this.client.handle(topics.APPLICATIONS_EXIT_TOPIC, this.exitApp);
+        this.client.handle(topics.APPLICATIONS_GET_STATE_TOPIC, this.getAppState);
+        this.client.handle(topics.SYSTEM_RESTART_TOPIC, this.restartDevice);
+        this.client.handle(topics.INPUT_KEY_PRESS_TOPIC, this.keyPress);
+        this.client.handle(topics.INPUT_LONG_KEY_PRESS_TOPIC, this.keyPressLong);
+        this.client.handle(topics.SYSTEM_LANGUAGE_SET_TOPIC, this.setSystemLanguage);
+        this.client.handle(topics.SYSTEM_LANGUAGE_GET_TOPIC, this.getSystemLanguage);
+        this.client.handle(topics.DEVICE_TELEMETRY_START_TOPIC, this.startDeviceTelemetry);
+        this.client.handle(topics.DEVICE_TELEMETRY_STOP_TOPIC, this.stopDeviceTelemetry);
+        this.client.handle(topics.APP_TELEMETRY_START_TOPIC, this.startAppTelemetry);
+        this.client.handle(topics.APP_TELEMETRY_STOP_TOPIC, this.stopAppTelemetry);
+        this.client.handle(topics.HEALTH_CHECK_TOPIC, this.healthCheck);
 
         //Start MQTT Client
         await this.client.init(uri);
@@ -108,13 +109,8 @@ export class DabDeviceInterface {
         return { status: 200, versions: [dabVersion] };
     }
 
-    /**
-     * @typedef {Object} DabResponse
-     * @property {number} status - Response status code
-     * @property {string} [error] - Error message if non 2XX response returned
-     */
-    dabResponse(status = 200, error) {
-        const response = {status: status};
+    dabResponse(status = 200, error?): DabResponse {
+        const response: DabResponse = {status: status};
         if (Math.floor(status / 100) !== 2) {
             if (!error) throw new Error("Error message must be returned for non 2XX status results");
             response.error = error;
@@ -248,10 +244,8 @@ export class DabDeviceInterface {
 
     /**
      * Publishes a retained message to the device info topic
-     * @abstract
-     * @returns {Promise<DabResponse|DeviceInformation>}
      */
-    async deviceInfo() {
+    async deviceInfo(): Promise<DabResponse> {
         return {status: 501, error: "Device info not implemented"};
     }
 
@@ -273,7 +267,7 @@ export class DabDeviceInterface {
      * @abstract
      * @returns {Promise<DabResponse|AppListResponse>}
      */
-    async listApps() {
+    async listApps(): Promise<DabResponse> {
         return {status: 501, error: "List apps not implemented"};
     }
 
@@ -285,7 +279,7 @@ export class DabDeviceInterface {
      * @param {string} [data.parameters] - parameters to pass to application
      * @returns {Promise<DabResponse>}
      */
-    async launchApp(data) {
+    async launchApp(data): Promise<DabResponse> {
         return {status: 501, error: "Launch app not implemented"};
     }
 
@@ -300,11 +294,11 @@ export class DabDeviceInterface {
      * @param {boolean} [data.force] - force exit, default to false
      * @returns {Promise<DabResponse>}
      */
-    async exitApp(data) {
+    async exitApp(data): Promise<DabResponse> {
         return {status: 501, error: "Exit app not implemented"};
     }
 
-    async getAppState(data) {
+    async getAppState(data): Promise<DabResponse> {
         return {status: 501, error: "Get app state not implemented"};
     }
 
@@ -313,7 +307,7 @@ export class DabDeviceInterface {
      * @abstract
      * @returns {Promise<DabResponse>}
      */
-    async restartDevice() {
+    async restartDevice(): Promise<DabResponse> {
         return {status: 501, error: "Restart not implemented"};
     }
 
@@ -325,7 +319,7 @@ export class DabDeviceInterface {
      * @param {string} data.keyCode - string literal, prefixed with KEY_ or KEY_CUSTOM_ per spec
      * @returns {Promise<DabResponse>}
      */
-    async keyPress(data) {
+    async keyPress(data): Promise<DabResponse> {
         return {status: 501, error: "Key press not implemented"};
     }
 
@@ -338,7 +332,7 @@ export class DabDeviceInterface {
      * @param {string} [data.durationMs] - delay between key down and up events
      * @returns {Promise<DabResponse>}
      */
-    async keyPressLong(data) {
+    async keyPressLong(data): Promise<DabResponse> {
         return {status: 501, error: "Long key press not implemented"};
     }
 
@@ -349,7 +343,7 @@ export class DabDeviceInterface {
      * @param {string} data.language - rcf_5646_language_tag
      * @returns {Promise<DabResponse>}
      */
-    async setSystemLanguage(data) {
+    async setSystemLanguage(data): Promise<DabResponse> {
         return {status: 501, error: "Set system language not implemented"};
     }
 
@@ -364,7 +358,7 @@ export class DabDeviceInterface {
      * @abstract
      * @returns {Promise<DabResponse|GetSystemLanguageResponse>}
      */
-    async getSystemLanguage() {
+    async getSystemLanguage(): Promise<DabResponse> {
         return {status: 501, error: "Get system language not implemented"};
     }
 
@@ -378,7 +372,7 @@ export class DabDeviceInterface {
      * @param {number} data.frequency - telemetry update frequency in milliseconds
      * @returns {Promise<DabResponse>}
      */
-    async startDeviceTelemetry(data) {
+    async startDeviceTelemetry(data): Promise<DabResponse> {
         return {status: 501, error: "Device telemetry not implemented"};
     }
 
@@ -388,7 +382,7 @@ export class DabDeviceInterface {
      * @abstract
      * @returns {Promise<DabResponse>}
      */
-    async stopDeviceTelemetry() {
+    async stopDeviceTelemetry(): Promise<DabResponse> {
         return {status: 501, error: "Device telemetry not implemented"};
     }
 
@@ -403,7 +397,7 @@ export class DabDeviceInterface {
      * @param {number} data.frequency - telemetry update frequency in milliseconds
      * @returns {Promise<DabResponse>}
      */
-    async startAppTelemetry(data) {
+    async startAppTelemetry(data): Promise<DabResponse> {
         return {status: 501, error: "App telemetry not implemented"};
     }
 
@@ -415,22 +409,14 @@ export class DabDeviceInterface {
      * @param {string} data.app - application id to start sending telemetry
      * @returns {Promise<DabResponse>}
      */
-    async stopAppTelemetry(data) {
+    async stopAppTelemetry(data): Promise<DabResponse> {
         return {status: 501, error: "App telemetry not implemented"};
     }
 
     /**
-     * @typedef {Object} HealthCheckResponse
-     * @property {number} status - Response status code
-     * @property {boolean} healthy - True if everything is functioning normally
-     */
-
-    /**
      * Returns the health status
-     * @abstract
-     * @returns {Promise<DabResponse|HealthCheckResponse>}
      */
-    async healthCheck() {
+    async healthCheck(): Promise<DabResponse> {
         return {status: 501, error: "Health check not implemented"};
     }
 }

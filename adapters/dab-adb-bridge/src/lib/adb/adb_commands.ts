@@ -16,7 +16,7 @@
 import config from 'config';
 import * as APP_STATUS from './app_status.js';
 import { ANDROID_CODES, KEY_CODES } from './adb_keymap.js';
-import { spawn } from 'promisify-child-process';
+import {Output, spawn} from 'promisify-child-process';
 import { getLogger, sleep } from "../util.js";
 const logger = getLogger();
 
@@ -25,6 +25,8 @@ process.on("unhandledRejection", (reason, p) => {
 });
 
 export class AdbCommands {
+    private adb: string;
+    private device: any;
     constructor(deviceId) {
         //Latest Linux ADB app is downloaded from https://developer.android.com/studio/releases/platform-tools.html
         this.adb = config.get("adb.binary");
@@ -127,12 +129,12 @@ export class AdbCommands {
     async devices() {
         let foundDevice = false;
         try {
-            const { stdout, stderr } = await spawn(this.adb, ["devices", "-l"], { encoding: "utf8" });
+            const { stdout, stderr }: Output = await spawn(this.adb, ["devices", "-l"], { encoding: "utf8" });
             if (stderr.toString() !== "") {
                 logger.warn(`adb devices output to stderr: ${stderr.toString()}`);
             }
 
-            let outputArr = stdout.split("\n");
+            let outputArr = stdout.toString().split("\n");
             let promises = outputArr.map(async (line) => {
                 //If the line is static output, ignore it
                 if (new RegExp(/List of devices attached/).test(line)) return;
@@ -167,7 +169,7 @@ export class AdbCommands {
                                 this.device.networkType = "other";
                             }
                             if (!this.device.ip) {
-                                const ipArr = await this.getDeviceIpsFromSerial(this.device.serial);
+                                const ipArr = await this.getDeviceIpsFromSerial();
                                 if (ipArr.length === 1) {
                                     this.device.ip = ipArr[0];
                                 } else {
@@ -230,6 +232,7 @@ export class AdbCommands {
                 return;
             }
             const outputArr = stdout
+                .toString()
                 .replace(/\r?\n|\r/g, "%%") // replace newlines with '%%' to fix multi-line properties
                 .replace(/]%%\[/g, "]\n[") // re-add newline between different properties
                 .split("\n");
@@ -251,7 +254,7 @@ export class AdbCommands {
     async getDeviceUptimeSeconds() {
         logger.info(`Getting device uptime for ${this.device.id}`);
         try {
-            const { stdout, stderr } = await spawn(
+            const { stdout, stderr }: Output = await spawn(
                 this.adb,
                 ["-s", this.device.id, "shell", "cat", "/proc/uptime"],
                 { encoding: "utf8" }
@@ -261,7 +264,7 @@ export class AdbCommands {
                 return;
             }
 
-            return Number.parseFloat(stdout.substring(0, stdout.indexOf(" ")));
+            return Number.parseFloat(stdout.toString().substring(0, stdout.indexOf(" ")));
         } catch (err) {
             logger.error(
                 `An exception occurred getting device uptime for ${this.device.id}: ${err.message}`
@@ -281,7 +284,7 @@ export class AdbCommands {
                 logger.error(`getActiveNicType output to stderr: ${stderr.toString()}`);
                 return;
             }
-            let outputArr = stdout.split("\n");
+            let outputArr = stdout.toString().split("\n");
             for (let line of outputArr) {
                 if (/wlan.*state UP/.test(line) ) {
                     return "wifi";
@@ -300,7 +303,7 @@ export class AdbCommands {
     async getDeviceIpsFromSerial() {
         logger.info(`Getting IPs for ${this.device.serial}`);
         try {
-            const { stdout, stderr } = await spawn(this.adb, ["-s", this.device.id, "shell", "ifconfig"], {
+            const { stdout, stderr }: Output = await spawn(this.adb, ["-s", this.device.id, "shell", "ifconfig"], {
                 encoding: "utf8",
             });
             if (stderr.toString() !== "") {
@@ -310,7 +313,7 @@ export class AdbCommands {
             const ipRegex = /addr:(\b(?:\d{1,3}\.){3}\d{1,3}\b)/g;
             let matches,
                 addresses = [];
-            while ((matches = ipRegex.exec(stdout))) {
+            while ((matches = ipRegex.exec(stdout.toString()))) {
                 if (matches[1] !== "127.0.0.1") addresses.push(matches[1]);
             }
             return addresses;
@@ -319,10 +322,10 @@ export class AdbCommands {
         }
     }
 
-    async getDeviceMacFromIp(ipAddress) {
+    async getDeviceMacFromIp(ipAddress: string) {
         logger.info(`Getting MAC for ${ipAddress}`);
         try {
-            const { stdout, stderr } = await spawn(this.adb, ["-s", this.device.id, "shell", "ip", "address"], {
+            const { stdout, stderr }: Output = await spawn(this.adb, ["-s", this.device.id, "shell", "ip", "address"], {
                 encoding: "utf8",
             });
             if (stderr.toString() !== "") {
@@ -331,7 +334,7 @@ export class AdbCommands {
             }
             const interfaceRegex = /^\d+: ((?:(?!^\d).)*)/gms;
             let matches;
-            while ((matches = interfaceRegex.exec(stdout))) {
+            while ((matches = interfaceRegex.exec(stdout.toString()))) {
                 //Only looking for MAC of the specified IP
                 if (matches[1].indexOf(ipAddress) === -1) continue;
 
@@ -511,7 +514,7 @@ export class AdbCommands {
 
     async #status1(appPackage) {
         logger.info(`Checking app ${appPackage} on ${this.device.id}`);
-        const { stdout, stderr } = await spawn(this.adb,
+        const { stdout, stderr }: Output = await spawn(this.adb,
             ["-s", this.device.id, "shell", "am", "stack", "list"], {
             encoding: "utf8",
         });
@@ -525,7 +528,7 @@ export class AdbCommands {
         let state = APP_STATUS.STOPPED;
         let output = stdout.toString().split(/[\r\n]+/);
 
-        if (new RegExp("Exception").test(output) || new RegExp("Error:").test(output)) {
+        if (new RegExp("Exception").test(output.toString()) || new RegExp("Error:").test(output.toString())) {
             throw new Error(`Failed to get app status for ${appPackage} on ${this.device.id}: ${stdout}`);
         }
 
@@ -545,7 +548,7 @@ export class AdbCommands {
 
     async #status2(appPackage) {
         logger.info(`Checking app ${appPackage} on ${this.device.id}`);
-        const { stdout, stderr } = await spawn(
+        const { stdout, stderr }: Output = await spawn(
             this.adb,
             ["-s", this.device.id, "shell", "dumpsys", "window", "windows"],
             {
@@ -559,7 +562,7 @@ export class AdbCommands {
 
         logger.debug(stdout);
 
-        if (new RegExp("Exception").test(stdout)) {
+        if (new RegExp("Exception").test(stdout.toString())) {
             throw new Error(`Failed to get app status for ${appPackage} on ${this.device.id}: ${stdout}`);
         }
 
@@ -607,7 +610,7 @@ export class AdbCommands {
     }
 
     async reboot() {
-        return new Promise(async (resolve, reject) => {
+        return new Promise<void>(async (resolve, reject) => {
             logger.info(`Rebooting ${this.device.id}`);
             spawn(this.adb, ["-s", this.device.id, "reboot"], {
                 encoding: "utf8",
@@ -637,7 +640,7 @@ export class AdbCommands {
 
     async top() {
         logger.debug(`Running top on ${this.device.id}`);
-        const { stdout, stderr } = await spawn(this.adb, ["-s", this.device.id, "shell", "top", "-n", "1"], {
+        const { stdout, stderr }: Output = await spawn(this.adb, ["-s", this.device.id, "shell", "top", "-n", "1"], {
             encoding: "utf8",
         });
 
@@ -645,10 +648,11 @@ export class AdbCommands {
             throw new Error(`ADB top output to stderr: ${stderr.toString()}`);
         }
 
-        let matchedData = stdout.match(/Tasks:([\s\S]+)Mem:([\s\S]+)Swap:([\s\S]+cached)/);
+        const matchedData = stdout.toString().match(/Tasks:([\s\S]+)Mem:([\s\S]+)Swap:([\s\S]+cached)/);
+        const processData = [];
         if (matchedData) {
             for (let i=1; i<matchedData.length; i++) {
-                matchedData[i] = matchedData[i].trim()
+                processData[i] = matchedData[i].trim()
                     .replace(/\r\n/g, ",")
                     .replace(/\s+/g, " ")
                     .split(",")
@@ -656,9 +660,9 @@ export class AdbCommands {
         }
 
         return {
-            tasks: matchedData[1],
-            memory: matchedData[2],
-            swap: matchedData[3],
+            tasks: processData[1],
+            memory: processData[2],
+            swap: processData[3],
         };
     }
 }

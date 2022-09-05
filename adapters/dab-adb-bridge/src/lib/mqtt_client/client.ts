@@ -13,59 +13,21 @@
  limitations under the License.
  */
 
-import mqtt from 'async-mqtt';
+import mqtt, {AsyncMqttClient, IClientOptions} from 'async-mqtt';
 import { serializeError } from 'serialize-error';
 import { v4 as uuidv4 } from 'uuid';
 import { TimeoutError } from './error.js';
 import { convertPattern } from './util.js';
-import ee2pkg from 'eventemitter2';
-const { EventEmitter2 } = ee2pkg;
+import { EventEmitter2 } from 'eventemitter2';
 
-/**
- * @typedef {Object} Message
- * @property {string} [error]
- */
+export class Client {
 
-/**
- * @callback SubscriptionCallback
- * @param {Message} message
- * @param {MqttPacket} packet
- */
-
-/**
- * @typedef {string|Buffer} MqttPayload
- */
-
-/**
- * @typedef {Object} MqttPacket
- * @property {string} [topic]
- * @property {MqttPayload} payload
- */
-
-/**
- * @typedef {Object} MqttOptions
- * @property {number} timeoutMs
- * @property {number} qos
- */
-
-/**
- * @typedef {Object} Subscription
- * @property {Function} end ends a subscription
- */
-
-/**
- * @class
- * @private
- */
-class Client {
-
-    #client;
-    #emitter;
-    #handlerSubscriptions;
+    #client: any;
+    #emitter: any;
+    #handlerSubscriptions: any;
 
   /**
    *  A generic construct that takes in an async mqtt client.
-   * @param {MqttClient} mqttClient
    */
   constructor(mqttClient) {
     this.#client = mqttClient;
@@ -123,7 +85,7 @@ class Client {
    * @param  {string} topic
    * @param  {SubscriptionCallback} callback
    */
-  subscribe(topic, callback) {
+  subscribe(topic: string, callback) {
     const event = convertPattern(topic);
     this.#emitter.on(event, callback);
     this.#client.subscribe(topic);
@@ -215,9 +177,8 @@ class Client {
 
 /**
  * @private
- * @param {MqttClient} mqttClient
  */
-function wrap(mqttClient) {
+function wrap(mqttClient: AsyncMqttClient) {
     return {
         setOnMessage: function (onMessage) {
             mqttClient.on("message", onMessage);
@@ -239,15 +200,13 @@ function wrap(mqttClient) {
 
 /**
  * Makes a mqtt connection and returns a async mqtt client.
- * @param  {string} uri mqtt connection uri
- * @param  {object} options mqtt connection options
  */
-export function connect(uri, options = {}) {
+export function connect(uri, options: IClientOptions & { onConnectionLost?: any, onConnected?: any} = {}): Promise<Client> {
     return new Promise((resolve, reject) => {
-        const { keepAliveInterval = 10, ...otherOptions } = options;
+        const { keepalive = 10, ...otherOptions } = options;
         options = Object.assign(
             {
-                keepalive: keepAliveInterval,
+                keepalive: keepalive,
                 connectTimeout: 2000,
                 resubscribe: true,
                 onConnected: () => {},
@@ -262,7 +221,8 @@ export function connect(uri, options = {}) {
 
         const onError = (error) => {
             if (!connected && !initialized) {
-                reject(error);
+                mqttClient.end()
+                    .finally(() => reject(error));
             }
             mqttClient.removeListener("error", onError);
         };

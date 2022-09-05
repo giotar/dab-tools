@@ -14,13 +14,17 @@
  */
 
 import  * as topics  from './dab_topics.js';
+import {MqttClient} from "../mqtt_client";
 
 export class DabClient {
+    private client: MqttClient;
+    private messagesSub: any;
+    private deviceTelemetrySub: any;
+    private appTelemetrySub: any;
     /**
      Sample DAB client based on the DabMqttClient implementation
-
      */
-    constructor(dab_mqtt_client) {
+    constructor(dab_mqtt_client: MqttClient) {
         /** @private @const  */
         this.client = dab_mqtt_client;
     }
@@ -85,7 +89,7 @@ export class DabClient {
         )
     }
 
-    async launchApp(appId, parameters) {
+    async launchApp(appId: string, parameters?) {
         return await this.client.request(
             topics.APPLICATIONS_LAUNCH_TOPIC,
             {

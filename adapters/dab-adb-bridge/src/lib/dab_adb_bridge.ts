@@ -14,7 +14,7 @@
 */
 
 import config from 'config';
-import { DabDeviceInterface } from './dab/dab_device_interface.js';
+import {DabDeviceBase, DabResponse} from './dab/dab_device_base';
 import { AdbCommands } from './adb/adb_commands.js';
 import {adbAppStatusToDabAppState, getLogger} from "./util.js";
 import { APPLICATION_STATE_BACKGROUND, APPLICATION_STATE_STOPPED } from "./dab/dab_constants.js";
@@ -22,7 +22,9 @@ import * as APP_STATUS from './adb/app_status.js';
 
 const logger = getLogger();
 
-export class DabDevice extends DabDeviceInterface {
+export class DabDevice extends DabDeviceBase {
+    private adb: AdbCommands;
+    private appMap: any;
 
     constructor(deviceId){
         super();
@@ -31,10 +33,11 @@ export class DabDevice extends DabDeviceInterface {
 
     }
 
-    deviceInfo = async () => {
+    override async deviceInfo(): Promise<DabResponse> {
         const deviceInfo = await this.adb.getDeviceDetails();
 
         return {
+            ...this.dabResponse(),
             manufacturer: deviceInfo.properties["ro.product.manufacturer"],
             model: deviceInfo.properties["ro.product.model"],
             serialNumber: deviceInfo.serial,
@@ -54,7 +57,7 @@ export class DabDevice extends DabDeviceInterface {
         };
     }
 
-    listApps = async () => {
+    override listApps = async () => {
         try {
             const appArr = [];
             const packageArr = await this.adb.getPackages();
@@ -88,7 +91,7 @@ export class DabDevice extends DabDeviceInterface {
         }
     }
 
-    launchApp = async (data) => {
+    override launchApp = async (data) => {
         if (typeof data.appId !== "string")
             return this.dabResponse(400, "'appId' must be set as the application id to launch");
 
@@ -130,7 +133,7 @@ export class DabDevice extends DabDeviceInterface {
         }
     }
 
-    exitApp = async (data) => {
+    override exitApp = async (data) => {
         if (typeof data.appId !== "string")
             return this.dabResponse(400, "'appId' must be set as the application id to exit");
 
@@ -164,7 +167,7 @@ export class DabDevice extends DabDeviceInterface {
         }
     }
 
-    getAppState = async (data) => {
+    override getAppState = async (data) => {
         if (typeof data.appId !== "string")
             return this.dabResponse(400, "'appId' must be set as the application id to query");
         try {
@@ -180,7 +183,7 @@ export class DabDevice extends DabDeviceInterface {
         }
     }
 
-    restartDevice = async () => {
+    override restartDevice = async () => {
         const handleReboot = async () => {
             await this.notify("warn", "Device is rebooting and will be temporarily offline");
             await this.adb.reboot();
@@ -190,7 +193,7 @@ export class DabDevice extends DabDeviceInterface {
         return this.dabResponse(202);
     }
 
-    keyPress = async (data) => {
+    override keyPress = async (data) => {
         if (typeof data.keyCode !== "string")
             return this.dabResponse(400, "'keyCode' must be set");
 
@@ -205,7 +208,7 @@ export class DabDevice extends DabDeviceInterface {
         }
     }
 
-    startDeviceTelemetry = async (data) => {
+    override startDeviceTelemetry = async (data) => {
         if (typeof data.frequency !== "number" || !Number.isInteger(data.frequency))
             return this.dabResponse(400, "'frequency' must be set as number of milliseconds between updates");
 
@@ -220,11 +223,11 @@ export class DabDevice extends DabDeviceInterface {
         })
     };
 
-    stopDeviceTelemetry = async () => {
+    override stopDeviceTelemetry = async () => {
         return await this.stopDeviceTelemetryImpl();
     };
 
-    healthCheck = async () => {
+    override healthCheck = async () => {
         return { ...this.dabResponse(), ...{healthy: typeof (await this.adb.getDeviceUptimeSeconds()) === "number" } };
     }
 }
