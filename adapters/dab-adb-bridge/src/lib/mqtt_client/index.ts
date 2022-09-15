@@ -14,27 +14,25 @@
  */
 
 import {Client, connect} from './client.js';
+import {DabResponse} from "../dab/dab_device_interface";
+import {IClientPublishOptions} from "mqtt";
 
-/**
- * @typedef {Object} Message
- * @property {string} type
- * @property {object} data
- */
+export type HandlerFunction = (message: unknown, requestId: string) => Promise<DabResponse>;
+export interface Handler {
+    path: string;
+    handler: HandlerFunction
+}
 
-/**
- * @callback HandlerCallback
- * @param {function(Message)}
- */
+export interface HandlerSubscription {
+    end: () => void;
+}
 
-/**
- * @class
- */
 export class MqttClient {
 
     #started: boolean;
-    #handlers: any[];
+    #handlers: Handler[];
     #mqtt: Client;
-    sub: any;
+    sub: HandlerSubscription;
 
     constructor() {
         this.#started = false;
@@ -45,7 +43,7 @@ export class MqttClient {
     /**
      * Associates a function to process incoming requests with a specific topic
      */
-    handle(path, handler) {
+    handle(path: string, handler: HandlerFunction) {
         this.#handlers.push({ path, handler });
     }
 
@@ -59,11 +57,8 @@ export class MqttClient {
     /**
      * Subscribes to a topic, invoking callback function on each new message
      * until subscription.end() is called
-     * @param  {string} topic
-     * @param  {SubscriptionCallback} callback
-     * @returns {Subscription} subscription
      */
-    subscribe(topic, callback) {
+    subscribe(topic: string, callback: (message: DabResponse) => Promise<void>): HandlerSubscription {
         return this.#mqtt.subscribe(topic, callback);
     }
 
@@ -73,10 +68,10 @@ export class MqttClient {
      * @param  {string} topic
      * @param  {number} [timeoutMs]
      */
-    subscribeOnce(topic, timeoutMs = 2000) {
+    subscribeOnce(topic: string, timeoutMs = 2000) {
         return new Promise( async (resolve, reject) => {
             const timer = setTimeout(() => reject(new Error(`Failed to receive response from ${topic} within ${timeoutMs}ms`)), timeoutMs);
-            this.sub = await this.subscribe(
+            this.sub = this.subscribe(
                 topic, async (message) => {
                     await this.sub.end();
                     clearTimeout(timer);
@@ -89,8 +84,8 @@ export class MqttClient {
     /**
      * Publishes a request to a topic where no response is expected
      */
-    publish(topic: string, payload?: any, options?: any) {
-        return this.#mqtt.publish.call(this.#mqtt, topic, payload, options);
+    publish(topic: string, payload?: unknown, options?: IClientPublishOptions) {
+        return this.#mqtt.publish(topic, payload, options);
     }
 
     /**
@@ -99,9 +94,9 @@ export class MqttClient {
      * @param  {{}} payload
      * @param  {MqttOptions} [options]
      */
-    publishRetained(topic, payload, options= {}) {
+    publishRetained(topic: string, payload: unknown, options: IClientPublishOptions= {}) {
         options = Object.assign(options, { retain: true });
-        return this.#mqtt.publish.call(this.#mqtt, topic, payload, options);
+        return this.#mqtt.publish(topic, payload, options);
     }
 
     /**
@@ -109,16 +104,16 @@ export class MqttClient {
      * @param  {string} topic
      * @param  {MqttOptions} [options]
      */
-    clearRetained(topic, options= {}) {
+    clearRetained(topic: string, options: IClientPublishOptions= {}) {
         options = Object.assign(options, { retain: true });
-        return this.#mqtt.publish.call(this.#mqtt, topic, undefined, options);
+        return this.#mqtt.publish(topic, undefined, options);
     }
 
     /**
      * A single MqttClient should be created per application and init should be called once.
      * It will return once a connection to the MQTT broker is established, and does not time out.
      */
-    async init(uri) {
+    async init(uri: string) {
         if (!this.#started) {
             this.#started = true;
             this.#mqtt = await connect(uri);
@@ -133,23 +128,15 @@ export class MqttClient {
 
     async stop() {
         if (this.#started) {
-            this.#mqtt.end();
+            await this.#mqtt.end();
             this.#started = false;
         }
     }
 
-    /**
-     * @private
-     */
-    #attachHandlers(handlers) {
+    #attachHandlers(handlers: Handler[]) {
         handlers.forEach(({ path, handler }) => {
-            this.#mqtt.handle(path, async (...args) => {
-                let response = handler(...args);
-                if (response instanceof Promise) {
-                    response = await response;
-                }
-
-                return response;
+            this.#mqtt.handle(path, async (message: unknown, requestId: string) => {
+                return await handler(message, requestId);
             });
         });
     }

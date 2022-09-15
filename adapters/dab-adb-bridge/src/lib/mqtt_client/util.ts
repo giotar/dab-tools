@@ -13,6 +13,6 @@
  limitations under the License.
  */
 
-export function convertPattern(mqttPattern) {
+export function convertPattern(mqttPattern: string) {
   return mqttPattern.replace(/#/g, "**").replace(/\+/g, "*");
 }

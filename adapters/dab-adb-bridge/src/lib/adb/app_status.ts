@@ -13,6 +13,13 @@
  limitations under the License.
  */
 
-export const RUNNING = "running";
-export const HIDDEN = "hidden";
-export const STOPPED = "stopped";
+/**
+ * The status of the application as reported by adb
+ * https://developer.android.com/reference/android/app/Activity.html
+ */
+export enum AndroidApplicationStatus {
+    Stopped = "stopped",
+    Running = "running",
+    Hidden = "hidden",
+}
+

@@ -17,6 +17,7 @@ import config from 'config';
 import { MqttClient } from './lib/mqtt_client/index.js';
 import { DabClient } from './lib/dab/dab_client.js';
 import { sleep } from "./lib/util.js";
+import {DabKey} from "./lib/adb/adb_keymap";
 
 async function main() {
     const client = new MqttClient();
@@ -69,20 +70,20 @@ async function main() {
             let key_response;
             if (app.appId === "settings") {
                 for(let i=0; i<5; i++) {
-                    key_response = await dab_client.pressKey('KEY_DOWN');
+                    key_response = await dab_client.pressKey(DabKey.KEY_DOWN);
                     console.log(`press "down": ${app.friendlyName}, response: ${JSON.stringify(key_response)}\n`);
                     await sleep(200);
                 }
-                key_response = await dab_client.pressKey('KEY_CUSTOM_HOME');
+                key_response = await dab_client.pressKey(DabKey.KEY_CUSTOM_HOME);
                 console.log(`press "custom home": ${app.friendlyName}, response: ${JSON.stringify(key_response)}\n`);
             } else {
                 await sleep(8 * 1000);
 
-                key_response = await dab_client.pressKey('KEY_ENTER');
+                key_response = await dab_client.pressKey(DabKey.KEY_ENTER);
                 console.log(`press "enter": ${app.friendlyName}, response: ${JSON.stringify(key_response)}\n`);
 
                 await sleep(3 * 1000);
-                key_response = await dab_client.pressKey('KEY_ENTER');
+                key_response = await dab_client.pressKey(DabKey.KEY_ENTER);
                 console.log(`press "enter": ${app.friendlyName}, response: ${JSON.stringify(key_response)}\n`);
 
                 await sleep(3 * 1000);

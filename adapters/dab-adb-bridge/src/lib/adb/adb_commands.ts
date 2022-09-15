@@ -14,10 +14,10 @@
  */
 
 import config from 'config';
-import * as APP_STATUS from './app_status.js';
-import { ANDROID_CODES, KEY_CODES } from './adb_keymap.js';
+import {AndroidKeyCode, DabKey, DabKeysToAndroidKeyCodes} from './adb_keymap.js';
 import {Output, spawn} from 'promisify-child-process';
 import { getLogger, sleep } from "../util.js";
+import {AndroidApplicationStatus} from "./app_status";
 const logger = getLogger();
 
 process.on("unhandledRejection", (reason, p) => {
@@ -27,7 +27,7 @@ process.on("unhandledRejection", (reason, p) => {
 export class AdbCommands {
     private adb: string;
     private device: any;
-    constructor(deviceId) {
+    constructor(deviceId: string) {
         //Latest Linux ADB app is downloaded from https://developer.android.com/studio/releases/platform-tools.html
         this.adb = config.get("adb.binary");
 
@@ -59,7 +59,7 @@ export class AdbCommands {
         }
     }
 
-    async init() {
+    async init(): Promise<void> {
         await this.devices();
         if (this.device.connection === "tcp") await this.connect();
     }
@@ -93,6 +93,9 @@ export class AdbCommands {
         const { stdout, stderr } = await spawn(this.adb, ["connect", this.device.id], {
             encoding: "utf8",
         });
+        if (this.isProcessOutputMissing(stdout, stderr)) {
+            throw new Error("Spawned ADB process but could not read stdout or stderr");
+        }
         if (stderr.toString() !== "") {
             throw new Error("ADB connect output to stderr: " + stderr.toString());
         }
@@ -129,7 +132,11 @@ export class AdbCommands {
     async devices() {
         let foundDevice = false;
         try {
-            const { stdout, stderr }: Output = await spawn(this.adb, ["devices", "-l"], { encoding: "utf8" });
+            const { stdout, stderr } = await spawn(this.adb, ["devices", "-l"], { encoding: "utf8" });
+            if (this.isProcessOutputMissing(stdout, stderr)) {
+                logger.error("Spawned ADB process but could not read stdout or stderr");
+                return;
+            }
             if (stderr.toString() !== "") {
                 logger.warn(`adb devices output to stderr: ${stderr.toString()}`);
             }
@@ -219,7 +226,7 @@ export class AdbCommands {
         }
     }
 
-    async getDeviceProps() {
+    async getDeviceProps(): Promise<Record<string, unknown>> {
         logger.info(`Getting device properties for ${this.device.id}`);
         try {
             const { stdout, stderr } = await spawn(
@@ -227,6 +234,10 @@ export class AdbCommands {
                 ["-s", this.device.id, "shell", "getprop"],
                 { encoding: "utf8" }
             );
+            if (this.isProcessOutputMissing(stdout, stderr)) {
+                logger.error("Spawned ADB process but could not read stdout or stderr");
+                return;
+            }
             if (stderr.toString() !== "") {
                 logger.error(`getDeviceProps output to stderr: ${stderr.toString()}`);
                 return;
@@ -236,7 +247,7 @@ export class AdbCommands {
                 .replace(/\r?\n|\r/g, "%%") // replace newlines with '%%' to fix multi-line properties
                 .replace(/]%%\[/g, "]\n[") // re-add newline between different properties
                 .split("\n");
-            const propObj = {};
+            const propObj: Record<string, unknown> = {};
             for (let line of outputArr) {
                 line = line.trim().replace(/\s+/, " ").replace(/\r?\n|\r/, "");
                 if (line.length === 0) continue;
@@ -254,11 +265,15 @@ export class AdbCommands {
     async getDeviceUptimeSeconds() {
         logger.info(`Getting device uptime for ${this.device.id}`);
         try {
-            const { stdout, stderr }: Output = await spawn(
+            const { stdout, stderr } = await spawn(
                 this.adb,
                 ["-s", this.device.id, "shell", "cat", "/proc/uptime"],
                 { encoding: "utf8" }
             );
+            if (this.isProcessOutputMissing(stdout, stderr)) {
+                logger.error("Spawned ADB process but could not read stdout or stderr");
+                return;
+            }
             if (stderr.toString() !== "") {
                 logger.error(`getDeviceUptimeSeconds output to stderr: ${stderr.toString()}`);
                 return;
@@ -280,6 +295,10 @@ export class AdbCommands {
                 ["-s", this.device.id, "shell", "ip", "addr"],
                 { encoding: "utf8" }
             );
+            if (this.isProcessOutputMissing(stdout, stderr)) {
+                logger.error("Spawned ADB process but could not read stdout or stderr");
+                return;
+            }
             if (stderr.toString() !== "") {
                 logger.error(`getActiveNicType output to stderr: ${stderr.toString()}`);
                 return;
@@ -303,9 +322,13 @@ export class AdbCommands {
     async getDeviceIpsFromSerial() {
         logger.info(`Getting IPs for ${this.device.serial}`);
         try {
-            const { stdout, stderr }: Output = await spawn(this.adb, ["-s", this.device.id, "shell", "ifconfig"], {
+            const { stdout, stderr } = await spawn(this.adb, ["-s", this.device.id, "shell", "ifconfig"], {
                 encoding: "utf8",
             });
+            if (this.isProcessOutputMissing(stdout, stderr)) {
+                logger.error("Spawned ADB process but could not read stdout or stderr");
+                return;
+            }
             if (stderr.toString() !== "") {
                 logger.error(`getDeviceIpFromSerial output to stderr: ${stderr.toString()}`);
                 return;
@@ -322,19 +345,23 @@ export class AdbCommands {
         }
     }
 
-    async getDeviceMacFromIp(ipAddress: string) {
+    async getDeviceMacFromIp(ipAddress: string): Promise<string> {
         logger.info(`Getting MAC for ${ipAddress}`);
         try {
             const { stdout, stderr }: Output = await spawn(this.adb, ["-s", this.device.id, "shell", "ip", "address"], {
                 encoding: "utf8",
             });
+            if (this.isProcessOutputMissing(stdout, stderr)) {
+                logger.error("Spawned ADB process but could not read stdout or stderr");
+                return;
+            }
             if (stderr.toString() !== "") {
                 logger.error(`getDeviceMacFromIp output to stderr: ${stderr.toString()}`);
                 return;
             }
             const interfaceRegex = /^\d+: ((?:(?!^\d).)*)/gms;
             let matches;
-            while ((matches = interfaceRegex.exec(stdout.toString()))) {
+            while (matches = interfaceRegex.exec(stdout.toString())) {
                 //Only looking for MAC of the specified IP
                 if (matches[1].indexOf(ipAddress) === -1) continue;
 
@@ -355,6 +382,10 @@ export class AdbCommands {
             ["-s", this.device.id, "shell", "pm", "list", "packages"],
             { encoding: "utf8" }
         );
+        if (this.isProcessOutputMissing(stdout, stderr)) {
+            logger.error("Spawned ADB process but could not read stdout or stderr");
+            return;
+        }
 
         if (stderr.toString() !== "") {
             throw new Error(`ADB list packages output to stderr: ${stderr.toString()}`);
@@ -368,13 +399,17 @@ export class AdbCommands {
             .split("\n");
     }
 
-    async start(intentArr) {
+    async start(intentArr: string[]) {
         if (!intentArr) throw new Error("Intent to start was not specified");
 
         let startArgs = [ ...["-s", this.device.id, "shell", "am", "start"], ...intentArr ];
 
         logger.info(`Starting intent on ${this.device.id} w/ args: ${startArgs}`);
         const { stdout, stderr } = await spawn(this.adb, startArgs, { encoding: "utf8" });
+        if (this.isProcessOutputMissing(stdout, stderr)) {
+            logger.error("Spawned ADB process but could not read stdout or stderr");
+            return;
+        }
 
         if (stderr.toString() !== "") {
             //Catching the warning here due to app is already running condition
@@ -402,8 +437,8 @@ export class AdbCommands {
         }
     }
 
-    async stop(appPackage) {
-         if (!appPackage || typeof appPackage !== "string" || appPackage.trim() === "") {
+    async stop(appPackage: string) {
+         if (appPackage.trim() === "") {
             throw new Error("App package to stop was not specified");
         }
 
@@ -413,6 +448,10 @@ export class AdbCommands {
             ["-s", this.device.id, "shell", "am", "force-stop", appPackage],
             { encoding: "utf8" }
         );
+        if (this.isProcessOutputMissing(stdout, stderr)) {
+            logger.error("Spawned ADB process but could not read stdout or stderr");
+            return;
+        }
 
         if (stderr.toString() !== "") {
             throw new Error(`ADB stop output to stderr: ${stderr.toString()}`);
@@ -428,29 +467,29 @@ export class AdbCommands {
         }
     }
 
-    async backgroundApp(appPackage) {
+    async backgroundApp(appPackage: string) {
         logger.debug(`Backgrounding current app on ${this.device.id}`);
         const {stderr } = await spawn(
             this.adb,
-            ["-s", this.device.id, "shell", "input", "keyevent", ANDROID_CODES.KEYCODE_HOME],
+            ["-s", this.device.id, "shell", "input", "keyevent", AndroidKeyCode.KEYCODE_HOME],
             { encoding: "utf8" }
         );
+        if (!stderr) {
+            logger.error("Spawned ADB process but could not read stderr");
+            return;
+        }
 
         if (stderr.toString() !== "") {
             throw new Error(`ADB backgroundApp output to stderr: ${stderr.toString()}`);
         }
-        await this.expectStatus(appPackage, APP_STATUS.HIDDEN, 10);
+        await this.expectStatus(appPackage, AndroidApplicationStatus.Hidden, 10);
     }
 
-    async expectStatus(appPackage, expectedState, timeoutSeconds) {
-        if (!appPackage || typeof appPackage !== "string" || appPackage.trim() === "") {
+    async expectStatus(appPackage: string, expectedState: AndroidApplicationStatus, timeoutSeconds: number) {
+        if (appPackage.trim() === "") {
             throw new Error("App package to stop was not specified");
         }
 
-        let expectedAppStatus = APP_STATUS[expectedState.toUpperCase()];
-        if (!expectedAppStatus) {
-            throw new Error(`Expected status was not recognized: ${expectedState}`);
-        }
 
         if (timeoutSeconds && typeof timeoutSeconds !== "number") {
             throw new Error(`Timeout seconds was not parsable: ${timeoutSeconds}`);
@@ -461,16 +500,16 @@ export class AdbCommands {
 
         let timeout = Date.now() + timeoutSeconds * 1000;
 
-        const waitStatus = async () => {
+        const waitStatus: () => Promise<{package: string, state: AndroidApplicationStatus}>  = async () => {
             let currentStatus = await this.status(appPackage);
-            if (currentStatus.state === expectedAppStatus) {
+            if (currentStatus.state === expectedState) {
                 //resolve(true) here because we found we have a match!
                 return currentStatus;
             } else {
                 if (Date.now() > timeout) {
                     //We've timed out, so reject
                     throw new Error(
-                        `Expected status ${expectedAppStatus} was not detected within ${timeoutSeconds} seconds`
+                        `Expected status ${expectedState} was not detected within ${timeoutSeconds} seconds`
                     );
                 } else {
                     await sleep(500);
@@ -480,18 +519,18 @@ export class AdbCommands {
             }
         };
 
-        logger.info(`Awaiting ADB ${expectedAppStatus} confirmation`);
+        logger.info(`Awaiting ADB ${expectedState} confirmation`);
         return await waitStatus();
     }
 
-    async status(appPackage) {
-        if (!appPackage || typeof appPackage !== "string" || appPackage.trim() === "") {
+    async status(appPackage: string): Promise<{package: string, state: AndroidApplicationStatus}> {
+        if (appPackage.trim() === "") {
             throw new Error("App package to stop was not specified");
         }
 
         this.device.useStatus2 = false;
 
-        const callStatus = async () => {
+        const callStatus: () => Promise<AndroidApplicationStatus> = async () => {
             if (this.device.useStatus2) {
                 logger.debug("Calling status2 impl");
                 return await this.#status2(appPackage);
@@ -512,12 +551,15 @@ export class AdbCommands {
         };
     }
 
-    async #status1(appPackage) {
+    async #status1(appPackage: string): Promise<AndroidApplicationStatus> {
         logger.info(`Checking app ${appPackage} on ${this.device.id}`);
-        const { stdout, stderr }: Output = await spawn(this.adb,
+        const { stdout, stderr } = await spawn(this.adb,
             ["-s", this.device.id, "shell", "am", "stack", "list"], {
             encoding: "utf8",
         });
+        if (this.isProcessOutputMissing(stdout, stderr)) {
+            throw new Error("Spawned ADB process but could not read stderr");
+        }
 
         if (stderr.toString() !== "") {
             throw new Error(`ADB status1 output to stderr: ${stderr.toString()}`);
@@ -525,7 +567,7 @@ export class AdbCommands {
 
         logger.debug(stdout);
 
-        let state = APP_STATUS.STOPPED;
+        let state = AndroidApplicationStatus.Stopped;
         let output = stdout.toString().split(/[\r\n]+/);
 
         if (new RegExp("Exception").test(output.toString()) || new RegExp("Error:").test(output.toString())) {
@@ -536,9 +578,9 @@ export class AdbCommands {
             if (new RegExp(appPackage).test(line)) {
                 //Netflix package is in the stack, so lets see if running or hidden
                 if (new RegExp("visible=true").test(line)) {
-                    state = APP_STATUS.RUNNING;
+                    state = AndroidApplicationStatus.Running;
                 } else if (new RegExp("visible=false").test(line)) {
-                    state = APP_STATUS.HIDDEN;
+                    state = AndroidApplicationStatus.Hidden;
                 }
             }
         });
@@ -546,15 +588,18 @@ export class AdbCommands {
         return state;
     }
 
-    async #status2(appPackage) {
+    async #status2(appPackage: string): Promise<AndroidApplicationStatus> {
         logger.info(`Checking app ${appPackage} on ${this.device.id}`);
-        const { stdout, stderr }: Output = await spawn(
+        const { stdout, stderr } = await spawn(
             this.adb,
             ["-s", this.device.id, "shell", "dumpsys", "window", "windows"],
             {
                 encoding: "utf8",
             }
         );
+        if (this.isProcessOutputMissing(stdout, stderr)) {
+            throw new Error("Spawned ADB process but could not read stderr");
+        }
 
         if (stderr.toString() !== "") {
             throw new Error(`ADB status2 output to stderr: ${stderr.toString()}`);
@@ -573,11 +618,11 @@ export class AdbCommands {
 
         let state;
         if (match === null || match[2] === undefined) {
-            state = APP_STATUS.STOPPED;
+            state = AndroidApplicationStatus.Stopped;
         } else if (match[2] === "true") {
-            state = APP_STATUS.RUNNING;
+            state = AndroidApplicationStatus.Running;
         } else if (match[2] === "false") {
-            state = APP_STATUS.HIDDEN;
+            state = AndroidApplicationStatus.Hidden;
         } else {
             throw new Error(`Failed to parse app status for ${appPackage} on ${this.device.id}: ${stdout}`);
         }
@@ -585,8 +630,8 @@ export class AdbCommands {
         return state;
     }
 
-    async sendKey(keyCode) {
-        let keyVal = KEY_CODES[keyCode];
+    async sendKey(keyCode: DabKey) {
+        let keyVal = DabKeysToAndroidKeyCodes[keyCode];
         if (isNaN(keyVal)) {
             throw new Error(
                 "Unrecognized keyCode was specified, no event code could be located: " + keyCode
@@ -601,6 +646,9 @@ export class AdbCommands {
                 encoding: "utf8",
             }
         );
+        if (this.isProcessOutputMissing(stdout, stderr)) {
+            throw new Error("Spawned ADB process but could not read stderr");
+        }
 
         if (stderr.toString() !== "") {
             throw new Error(`ADB sendKey output to stderr: ${stderr.toString()}`);
@@ -643,6 +691,9 @@ export class AdbCommands {
         const { stdout, stderr }: Output = await spawn(this.adb, ["-s", this.device.id, "shell", "top", "-n", "1"], {
             encoding: "utf8",
         });
+        if (this.isProcessOutputMissing(stdout, stderr)) {
+            throw new Error("Spawned ADB process but could not read stderr");
+        }
 
         if (stderr.toString() !== "") {
             throw new Error(`ADB top output to stderr: ${stderr.toString()}`);
@@ -664,5 +715,9 @@ export class AdbCommands {
             memory: processData[2],
             swap: processData[3],
         };
+    }
+
+    private isProcessOutputMissing(stdout: string | Buffer | null | undefined, stderr: string | Buffer | null | undefined,) {
+        return stdout === null || stdout === undefined || stderr === null || stderr === undefined;
     }
 }

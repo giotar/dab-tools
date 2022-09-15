@@ -22,7 +22,9 @@
   },
   "homepage": "https://github.com/device-access-bus/dab-adb-bridge#readme",
   "dependencies": {
+    "@types/bunyan": "^1.8.8",
     "@types/uuid": "^8.3.4",
+    "@types/ws": "^8.5.3",
     "async-mqtt": "^2.6.1",
     "bunyan": "^1.8.15",
     "config": "^3.3.3",

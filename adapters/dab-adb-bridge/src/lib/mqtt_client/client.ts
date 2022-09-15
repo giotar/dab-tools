@@ -13,23 +13,34 @@
  limitations under the License.
  */
 
-import mqtt, {AsyncMqttClient, IClientOptions} from 'async-mqtt';
+import mqtt, {
+    AsyncMqttClient,
+    IClientOptions,
+    ISubscriptionGrant,
+    OnErrorCallback,
+    OnMessageCallback
+} from 'async-mqtt';
 import { serializeError } from 'serialize-error';
 import { v4 as uuidv4 } from 'uuid';
 import { TimeoutError } from './error.js';
 import { convertPattern } from './util.js';
-import { EventEmitter2 } from 'eventemitter2';
+import {EventEmitter2, ListenerFn} from 'eventemitter2';
+import {IClientPublishOptions} from "mqtt";
+import {IPublishPacket} from "mqtt-packet";
+import {HandlerFunction, HandlerSubscription} from "./index";
+
+
 
 export class Client {
 
-    #client: any;
-    #emitter: any;
-    #handlerSubscriptions: any;
+    #client: WrappedMqttClient;
+    #emitter: EventEmitter2;
+    #handlerSubscriptions: HandlerSubscription[];
 
   /**
    *  A generic construct that takes in an async mqtt client.
    */
-  constructor(mqttClient) {
+  constructor(mqttClient: WrappedMqttClient) {
     this.#client = mqttClient;
     this.#emitter = new EventEmitter2({
       wildcard: true,
@@ -51,7 +62,7 @@ export class Client {
    * @param  {MqttPayload} [msg]
    * @param  {MqttPacket} pkt
    */
-  #handleMessage(topic, msg, pkt) {
+  #handleMessage(topic: string, msg: Buffer, pkt: IPublishPacket) {
     let response = {};
 
     if (msg && msg.length) {
@@ -69,23 +80,14 @@ export class Client {
     this.#emitter.emit(topic, response, pkt);
   }
 
-  /**
-   * @param  {string} topic
-   * @param  {Object} msg
-   * @param  {MqttOptions} options
-   */
-  async publish(topic, msg, options = {}) {
+  async publish(topic: string, msg?: unknown, options: IClientPublishOptions = {}) {
     const defaultOptions = { qos: 2, retain: false };
     options = Object.assign(defaultOptions, options);
 
     return this.#client.publish(topic, msg, options);
   }
 
-  /**
-   * @param  {string} topic
-   * @param  {SubscriptionCallback} callback
-   */
-  subscribe(topic: string, callback) {
+  subscribe(topic: string, callback: ListenerFn): HandlerSubscription {
     const event = convertPattern(topic);
     this.#emitter.on(event, callback);
     this.#client.subscribe(topic);
@@ -108,14 +110,14 @@ export class Client {
    * @param  {Object} payload
    * @param  {MqttOptions} options
    */
-  async request(topic, payload = {}, options = { qos: 2, timeoutMs: 5000 }) {
+  async request(topic: string, payload = {}, options: IClientPublishOptions & { timeoutMs?: number } = { qos: 2, timeoutMs: 5000 }) {
     const requestId = uuidv4();
     const requestTopic = `${topic}/${requestId}`;
 
     const timeout = options.timeoutMs || 5000;
 
     return new Promise((resolve, reject) => {
-      let timer;
+      let timer: NodeJS.Timeout;
       const subscription = this.subscribe(`_response/${requestTopic}`, async function (msg) {
         subscription.end();
         clearTimeout(timer);
@@ -141,7 +143,7 @@ export class Client {
    * @param  {string} topic
    * @param  {Function} handler
    */
-  handle(topic, handler) {
+  handle(topic: string, handler: HandlerFunction) {
     const subscription = this.subscribe(`${topic}/+`, async (msg, { topic: requestTopic }) => {
       if (!requestTopic) {
         return Promise.reject(
@@ -169,27 +171,31 @@ export class Client {
     this.#handlerSubscriptions.push(subscription);
   }
 
-  async end(...args) {
+  async end() {
     await Promise.all(this.#handlerSubscriptions.map((handler) => handler.end()));
-    await this.#client.end(...args);
+    await this.#client.end();
   }
 }
 
-/**
- * @private
- */
-function wrap(mqttClient: AsyncMqttClient) {
+interface WrappedMqttClient {
+    setOnMessage: (onMessage: OnMessageCallback) => void;
+    subscribe: (topic: string) => Promise<ISubscriptionGrant[]>;
+    unsubscribe: (topic: string) => void;
+    publish: (topic: string, payload?: unknown, options?: IClientPublishOptions) => void;
+    end: () => Promise<void>;
+}
+function wrap(mqttClient: AsyncMqttClient): WrappedMqttClient {
     return {
-        setOnMessage: function (onMessage) {
+        setOnMessage: function (onMessage: OnMessageCallback) {
             mqttClient.on("message", onMessage);
         },
-        subscribe: function (topic) {
+        subscribe: function (topic: string) {
             return mqttClient.subscribe(topic);
         },
-        unsubscribe: function (topic) {
+        unsubscribe: function (topic: string) {
             return mqttClient.unsubscribe(topic);
         },
-        publish: function (topic, payload, options) {
+        publish: function (topic: string, payload: unknown, options: IClientPublishOptions) {
             return mqttClient.publish(topic, JSON.stringify(payload), options);
         },
         end: function () {
@@ -201,7 +207,7 @@ function wrap(mqttClient: AsyncMqttClient) {
 /**
  * Makes a mqtt connection and returns a async mqtt client.
  */
-export function connect(uri, options: IClientOptions & { onConnectionLost?: any, onConnected?: any} = {}): Promise<Client> {
+export function connect(uri: string, options: IClientOptions & { onConnectionLost?: () => void, onConnected?: () => unknown} = {}): Promise<Client> {
     return new Promise((resolve, reject) => {
         const { keepalive = 10, ...otherOptions } = options;
         options = Object.assign(
@@ -219,7 +225,7 @@ export function connect(uri, options: IClientOptions & { onConnectionLost?: any,
         let connected = false;
         let initialized = false;
 
-        const onError = (error) => {
+        const onError: OnErrorCallback = (error) => {
             if (!connected && !initialized) {
                 mqttClient.end()
                     .finally(() => reject(error));

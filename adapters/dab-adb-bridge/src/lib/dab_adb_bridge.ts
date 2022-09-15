@@ -17,8 +17,15 @@ import config from 'config';
 import {DabDeviceBase, DabResponse} from './dab/dab_device_base';
 import { AdbCommands } from './adb/adb_commands.js';
 import {adbAppStatusToDabAppState, getLogger} from "./util.js";
-import { APPLICATION_STATE_BACKGROUND, APPLICATION_STATE_STOPPED } from "./dab/dab_constants.js";
-import * as APP_STATUS from './adb/app_status.js';
+import {AndroidApplicationStatus} from "./adb/app_status";
+import {APPLICATION_STATE_BACKGROUND, APPLICATION_STATE_STOPPED} from "./dab/dab_constants.js";
+import {
+    AdbBridgeLaunchApplicationRequest,
+    ExitApplicationRequest,
+    GetApplicationStateRequest,
+    KeyPressRequest,
+    StartDeviceTelemetryRequest
+} from "./dab/dab_requests";
 
 const logger = getLogger();
 
@@ -26,7 +33,7 @@ export class DabDevice extends DabDeviceBase {
     private adb: AdbCommands;
     private appMap: any;
 
-    constructor(deviceId){
+    constructor(deviceId: string){
         super();
         this.adb = new AdbCommands(deviceId);
         this.appMap = config.get("appMap");
@@ -91,7 +98,7 @@ export class DabDevice extends DabDeviceBase {
         }
     }
 
-    override launchApp = async (data) => {
+    override launchApp = async (data: AdbBridgeLaunchApplicationRequest) => {
         if (typeof data.appId !== "string")
             return this.dabResponse(400, "'appId' must be set as the application id to launch");
 
@@ -100,29 +107,16 @@ export class DabDevice extends DabDeviceBase {
             if (!this.appMap[data.appId] || !this.appMap[data.appId].intent)
                 return this.dabResponse(404, `Couldn't find data for app ${data.appId} in config file`);
 
-            let intent = this.appMap[data.appId].intent;
-            if (data.parameters) {
+            let intent: string[] = this.appMap[data.appId].intent.slice();
+            if (Array.isArray(data.parameters)) {
                 if (this.appMap[data.appId].optionsPrefix) {
                     logger.debug("Adding optionsPrefix to intent array");
                     intent = [ ...intent, ...this.appMap[data.appId].optionsPrefix ];
                 }
-                try {
-                    if (typeof data.parameters === "object") data.parameters = JSON.stringify(data.parameters);
-                    const parsedParams = JSON.parse(data.parameters);
-                    if (Array.isArray(parsedParams)) {
-                        logger.debug("Adding parameters to intent array");
-                        intent = [ ...intent, ...parsedParams ];
-                    } else if (typeof parsedParams === "object") {
-                        logger.debug("Adding parameters as stringified object to intent array");
-                        intent = [ ...intent, ...["'" + data.parameters + "'"] ];
-                    }
-                } catch(e) {
-                    logger.debug("Appending parameters to last intent array value");
-                    const appendedArg = intent[intent.length-1] + data.parameters;
-                    let cloneIntent = [...intent]
-                    cloneIntent.pop();
-                    intent = [ ...cloneIntent, ...[appendedArg] ];
-                }
+                intent = [ ...intent, ...data.parameters ];
+            } else if (data.parameters) {
+                logger.debug("Appending parameters to last intent array value");
+                intent[intent.length - 1] = intent[intent.length - 1] + data.parameters;
             }
 
             await this.adb.start(intent);
@@ -133,25 +127,25 @@ export class DabDevice extends DabDeviceBase {
         }
     }
 
-    override exitApp = async (data) => {
+    override exitApp = async (data: ExitApplicationRequest) => {
         if (typeof data.appId !== "string")
             return this.dabResponse(400, "'appId' must be set as the application id to exit");
 
         try {
             data.appId = data.appId.toLowerCase();
-            const appPackage = this.appMap[data.appId]?.package;
+            const appPackage: string | undefined = this.appMap[data.appId]?.package;
             if (!appPackage)
                 return this.dabResponse(404, `Couldn't find data for app ${data.appId} in config file`);
 
             const appStatus = (await this.adb.status(appPackage))?.state;
             if (data.force) {
-                if (appStatus !== APP_STATUS["STOPPED"]) {
+                if (appStatus !== AndroidApplicationStatus.Stopped) {
                     await this.adb.stop(appPackage);
                 }
                 return {...this.dabResponse(), state: APPLICATION_STATE_STOPPED};
             }
 
-            if (appStatus === APP_STATUS["RUNNING"]) {
+            if (appStatus === AndroidApplicationStatus.Running) {
                 try {
                     await this.adb.backgroundApp(appPackage)
                     return {...this.dabResponse(), state: APPLICATION_STATE_BACKGROUND};
@@ -167,7 +161,7 @@ export class DabDevice extends DabDeviceBase {
         }
     }
 
-    override getAppState = async (data) => {
+    override getAppState = async (data: GetApplicationStateRequest) => {
         if (typeof data.appId !== "string")
             return this.dabResponse(400, "'appId' must be set as the application id to query");
         try {
@@ -193,7 +187,7 @@ export class DabDevice extends DabDeviceBase {
         return this.dabResponse(202);
     }
 
-    override keyPress = async (data) => {
+    override keyPress = async (data: KeyPressRequest) => {
         if (typeof data.keyCode !== "string")
             return this.dabResponse(400, "'keyCode' must be set");
 
@@ -208,11 +202,11 @@ export class DabDevice extends DabDeviceBase {
         }
     }
 
-    override startDeviceTelemetry = async (data) => {
+    override startDeviceTelemetry = async (data: StartDeviceTelemetryRequest) => {
         if (typeof data.frequency !== "number" || !Number.isInteger(data.frequency))
             return this.dabResponse(400, "'frequency' must be set as number of milliseconds between updates");
 
-        const platformMinFrequency = config.get("adb.minTelemetryMillis");
+        const platformMinFrequency: number = config.get("adb.minTelemetryMillis");
         if (data.frequency < platformMinFrequency) {
             data.frequency =  platformMinFrequency; //Setting minimum frequency for Android
             logger.info(`Increased device telemetry frequency to minimum allowed: ${platformMinFrequency}ms`);

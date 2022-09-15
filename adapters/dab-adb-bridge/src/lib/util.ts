@@ -15,30 +15,31 @@
 
 import bunyan from 'bunyan';
 import {readFileSync} from 'fs';
-import { HIDDEN, RUNNING, STOPPED } from "./adb/app_status.js";
 import {
   APPLICATION_STATE_BACKGROUND,
   APPLICATION_STATE_FOREGROUND,
   APPLICATION_STATE_STOPPED
 } from "./dab/dab_constants.js";
+import {AndroidApplicationStatus} from "./adb/app_status";
+import Logger from "bunyan";
 
-export function sleep(ms) {
+export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function adbAppStatusToDabAppState(appStatus) {
+export function adbAppStatusToDabAppState(appStatus: AndroidApplicationStatus) {
   switch (appStatus) {
-    case RUNNING:
+    case AndroidApplicationStatus.Running:
       return APPLICATION_STATE_FOREGROUND;
-    case HIDDEN:
+    case AndroidApplicationStatus.Hidden:
       return APPLICATION_STATE_BACKGROUND
-    case STOPPED:
+    case AndroidApplicationStatus.Stopped:
       return APPLICATION_STATE_STOPPED;
   }
 }
 
 // Static logger
-let logger;
+let logger: Logger;
 export function getLogger() {
   if (!logger) {
     const packageJson = JSON.parse(readFileSync('./package.json', 'utf8'));
@@ -59,9 +60,10 @@ export function getLogger() {
       src: true
     });
     // This removes the `v` field as its only needed by bunyan cli and useless to us.
+    //@ts-ignore
     logger._emit = (rec, noemit) => {
       delete rec.v;
-      // @ts-ignore
+      //@ts-ignore
       bunyan.prototype._emit.call(logger, rec, noemit);
     };
   }

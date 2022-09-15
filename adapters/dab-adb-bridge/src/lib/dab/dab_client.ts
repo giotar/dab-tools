@@ -15,6 +15,7 @@
 
 import  * as topics  from './dab_topics.js';
 import {MqttClient} from "../mqtt_client";
+import {DabKey} from "../adb/adb_keymap";
 
 export class DabClient {
     private client: MqttClient;
@@ -25,7 +26,6 @@ export class DabClient {
      Sample DAB client based on the DabMqttClient implementation
      */
     constructor(dab_mqtt_client: MqttClient) {
-        /** @private @const  */
         this.client = dab_mqtt_client;
     }
 
@@ -79,7 +79,7 @@ export class DabClient {
         )
     }
 
-    async exitApp(appId, force=false) {
+    async exitApp(appId: string, force=false) {
         return await this.client.request(
             topics.APPLICATIONS_EXIT_TOPIC,
             {
@@ -89,7 +89,7 @@ export class DabClient {
         )
     }
 
-    async launchApp(appId: string, parameters?) {
+    async launchApp(appId: string, parameters?: string[] | string) {
         return await this.client.request(
             topics.APPLICATIONS_LAUNCH_TOPIC,
             {
@@ -99,7 +99,7 @@ export class DabClient {
         )
     }
 
-    async pressKey(keyCode){
+    async pressKey(keyCode: DabKey){
         return await this.client.request(
             topics.INPUT_KEY_PRESS_TOPIC,
             {
@@ -108,7 +108,7 @@ export class DabClient {
         )
     }
 
-    async pressKeyLong(keyCode, durationMs){
+    async pressKeyLong(keyCode: DabKey, durationMs: number){
         return await this.client.request(
             topics.INPUT_LONG_KEY_PRESS_TOPIC,
             {
@@ -118,7 +118,7 @@ export class DabClient {
         )
     }
 
-    async startDeviceTelemetry(frequency){
+    async startDeviceTelemetry(frequency: number){
         return await this.client.request(
             topics.DEVICE_TELEMETRY_START_TOPIC,
             {
@@ -133,21 +133,21 @@ export class DabClient {
         )
     }
 
-    async startAppTelemetry(appId, frequency){
+    async startAppTelemetry(appId: string, frequency: number){
         return await this.client.request(
             topics.APP_TELEMETRY_START_TOPIC,
             {
-                app: appId,
+                appId: appId,
                 frequency: frequency
             }
         )
     }
 
-    async stopAppTelemetry(appId){
+    async stopAppTelemetry(appId: string){
         return await this.client.request(
             topics.APP_TELEMETRY_STOP_TOPIC,
             {
-                app: appId
+                appId: appId
             }
         )
     }
