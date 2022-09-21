@@ -24,11 +24,11 @@ import {
     StartApplicationTelemetryRequest, StartDeviceTelemetryRequest,
     StopApplicationTelemetryRequest
 } from "./dab_requests";
+import {DeviceInformationResponse, ListApplicationsResponse, VersionResponse, HealthCheckResponse} from "./dab_responses";
 
 export interface DabResponse {
     status: number;
     error?: string;
-    [key: string]: unknown;
 }
 
 export type NotificationLevel = "info" | "warn" | "debug" | "trace" | "error";
@@ -40,7 +40,7 @@ interface Telemetry {
 
 export abstract class DabDeviceBase {
     private telemetry: Telemetry;
-    private client: MqttClient;
+    private client!: MqttClient;
     /**
      * Constructor for DabDeviceInterface
      * Don't construct this interface directly.
@@ -118,7 +118,7 @@ export abstract class DabDeviceBase {
      * version delimited by a full stop character . Major and minor versions are
      * non-negative integers.
      */
-    version(): DabResponse {
+    version(): VersionResponse {
         const packageVersion = JSON.parse(readFileSync('./package.json', 'utf8')).version;
         const dabVersion = packageVersion.substring(packageVersion, packageVersion.lastIndexOf(".")); // remove patch version
         return { status: 200, versions: [dabVersion] };
@@ -257,7 +257,7 @@ export abstract class DabDeviceBase {
     /**
      * Publishes a retained message to the device info topic
      */
-    async deviceInfo(): Promise<DabResponse> {
+    async deviceInfo(): Promise<DeviceInformationResponse | DabResponse> {
         return {status: 501, error: "Device info not implemented"};
     }
 
@@ -279,7 +279,7 @@ export abstract class DabDeviceBase {
      * @abstract
      * @returns {Promise<DabResponse|AppListResponse>}
      */
-    async listApps(): Promise<DabResponse> {
+    async listApps(): Promise<ListApplicationsResponse | DabResponse> {
         return {status: 501, error: "List apps not implemented"};
     }
 
@@ -428,7 +428,7 @@ export abstract class DabDeviceBase {
     /**
      * Returns the health status
      */
-    async healthCheck(): Promise<DabResponse> {
+    async healthCheck(): Promise<DabResponse | HealthCheckResponse> {
         return {status: 501, error: "Health check not implemented"};
     }
 }

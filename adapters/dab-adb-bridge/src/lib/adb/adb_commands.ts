@@ -25,7 +25,7 @@ process.on("unhandledRejection", (reason, p) => {
 });
 
 type Device = any
-enum NetworkType {
+export enum NetworkInterfaceType {
     Wifi = "wifi",
     Ethernet = "ethernet",
     Other = "other",
@@ -181,15 +181,17 @@ export class AdbCommands {
                             if (this.device.id.startsWith(this.device.ip)) {
                                 this.device.networkType = await this.getNetworkType();
                             } else {
-                                this.device.networkType = NetworkType.Other;
+                                this.device.networkType = NetworkInterfaceType.Other;
                             }
                             if (!this.device.ip) {
-                                const ipArr = await this.getDeviceIpsFromSerial();
-                                if (ipArr.length === 1) {
-                                    this.device.ip = ipArr[0];
-                                } else {
-                                    this.device.ip = ipArr;
-                                }
+                                try {
+                                    const ipArr = await this.getDeviceIpsFromSerial();
+                                    if (ipArr.length === 1) {
+                                        this.device.ip = ipArr[0];
+                                    } else {
+                                        this.device.ip = ipArr;
+                                    }
+                                } catch (e) {}
                             }
                             if (this.device.ip && !this.device.mac) {
                                 if (Array.isArray(this.device.ip)) {
@@ -231,6 +233,7 @@ export class AdbCommands {
             }
         } catch (err) {
             logger.error(err, "An exception occurred getting adb devices details");
+            throw err;
         }
     }
 
@@ -297,7 +300,7 @@ export class AdbCommands {
         }
     }
 
-    async getNetworkType(): Promise<NetworkType> {
+    async getNetworkType(): Promise<NetworkInterfaceType> {
         logger.info(`Getting device active NIC type for ${this.device.id}`);
         try {
             const output = await spawn(
@@ -315,12 +318,12 @@ export class AdbCommands {
             let outputArr = stdout.toString().split("\n");
             for (let line of outputArr) {
                 if (/wlan.*state UP/.test(line) ) {
-                    return NetworkType.Wifi;
+                    return NetworkInterfaceType.Wifi;
                 } else if (/eth.*state UP/.test(line) ) {
-                    return NetworkType.Ethernet;
+                    return NetworkInterfaceType.Ethernet;
                 }
             }
-            return NetworkType.Unknown;
+            return NetworkInterfaceType.Unknown;
         } catch (err) {
             logger.error(
                 `An exception occurred determining device active NIC type for ${this.device.id}: ${err.message}`

@@ -28,11 +28,9 @@ import {EventEmitter2, ListenerFn} from 'eventemitter2';
 import {IClientPublishOptions} from "mqtt";
 import {IPublishPacket} from "mqtt-packet";
 import {HandlerFunction, HandlerSubscription} from "./index";
-
-
+import {clearTimeout} from "timers";
 
 export class Client {
-
     #client: WrappedMqttClient;
     #emitter: EventEmitter2;
     #handlerSubscriptions: HandlerSubscription[];
@@ -50,19 +48,15 @@ export class Client {
 
     this.#handlerSubscriptions = [];
 
-    this.#client.setOnMessage(this.#handleMessage.bind(this));
+    this.#client.setOnMessage(this.handleMessage.bind(this));
   }
 
   /**
    * Callback when the client receives a message to one of the subscribed topics
    * - the message could be a response from the client / device to the previous request
    * - the message could be a request to the client / device
-   * @private
-   * @param  {string} topic
-   * @param  {MqttPayload} [msg]
-   * @param  {MqttPacket} pkt
    */
-  #handleMessage(topic: string, msg: Buffer, pkt: IPublishPacket) {
+  private handleMessage(topic: string, msg: Buffer, pkt: IPublishPacket): void {
     let response = {};
 
     if (msg && msg.length) {
@@ -80,71 +74,68 @@ export class Client {
     this.#emitter.emit(topic, response, pkt);
   }
 
-  async publish(topic: string, msg?: unknown, options: IClientPublishOptions = {}) {
+  public async publish(topic: string, msg?: unknown, options: IClientPublishOptions = {}): Promise<void> {
     const defaultOptions = { qos: 2, retain: false };
     options = Object.assign(defaultOptions, options);
 
     return this.#client.publish(topic, msg, options);
   }
 
-  subscribe(topic: string, callback: ListenerFn): HandlerSubscription {
+  public async subscribe(topic: string, callback: ListenerFn): Promise<HandlerSubscription> {
     const event = convertPattern(topic);
     this.#emitter.on(event, callback);
-    this.#client.subscribe(topic);
+    await this.#client.subscribe(topic);
 
     return {
-      end: () => {
+      end: async () => {
         this.#emitter.removeListener(event, callback);
         if (this.#emitter.listeners(event).length === 0) {
-          this.#client.unsubscribe(topic);
+          await this.#client.unsubscribe(topic);
         }
       },
     };
   }
 
+    /**
+     * Makes a request to the DAB-enabled device, using the request/response convention
+     * This method will automatically generate the request ID and append it to the request
+     * If operation timed-out, it will throw a error.
+     */
+    public async request(topic: string, payload: unknown = {}, options: IClientPublishOptions & { timeoutMs?: number } = {
+        qos: 2,
+        timeoutMs: 5000
+    }): Promise<unknown> {
+        const requestId = uuidv4();
+        const requestTopic = `${topic}/${requestId}`;
+        const timeout = options.timeoutMs || 5000;
+
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(function () {
+                reject(new TimeoutError(`Failed to receive response from ${topic} within ${timeout}ms`));
+                subscriptionPromise.then(s => s.end())
+            }, timeout);
+            const subscriptionPromise = this.subscribe(`_response/${requestTopic}`, function (msg) {
+                clearTimeout(timer);
+                if (msg.status > 299) {
+                    reject(msg);
+                } else {
+                    resolve(msg);
+                }
+                subscriptionPromise.then(s => s.end())
+            });
+
+            this.publish(requestTopic, payload, options).catch(err => {
+                subscriptionPromise.then(s => s.end());
+                reject(err);
+            });
+        });
+    }
+
   /**
-   * Makes a request to the DAB-enabled device, using the request/response convention
-   * This method will automatically generate the request ID and append it to the request
-   * If operation timed-out, it will throw a error.
-   * @param  {string} topic
-   * @param  {Object} payload
-   * @param  {MqttOptions} options
+   * Register a handler for messages to the specified topic.
    */
-  async request(topic: string, payload = {}, options: IClientPublishOptions & { timeoutMs?: number } = { qos: 2, timeoutMs: 5000 }) {
-    const requestId = uuidv4();
-    const requestTopic = `${topic}/${requestId}`;
-
-    const timeout = options.timeoutMs || 5000;
-
-    return new Promise((resolve, reject) => {
-      let timer: NodeJS.Timeout;
-      const subscription = this.subscribe(`_response/${requestTopic}`, async function (msg) {
-        subscription.end();
-        clearTimeout(timer);
-
-        if (msg.status > 299) {
-          reject(msg);
-        } else {
-          resolve(msg);
-        }
-      });
-
-      timer = setTimeout(async function () {
-        subscription.end();
-        reject(new TimeoutError(`Failed to receive response from ${topic} within ${timeout}ms`));
-      }, timeout);
-
-      this.publish(requestTopic, payload, options).catch(reject);
-    });
-  }
-
-  /**
-   * Handles topic response from broker.
-   * @param  {string} topic
-   * @param  {Function} handler
-   */
-  handle(topic: string, handler: HandlerFunction) {
-    const subscription = this.subscribe(`${topic}/+`, async (msg, { topic: requestTopic }) => {
+  async handle(topic: string, handler: HandlerFunction): Promise<void> {
+    const subscription = await this.subscribe(`${topic}/+`, async (msg, { topic: requestTopic }) => {
       if (!requestTopic) {
         return Promise.reject(
           new Error(`FATAL: Handler for topic (${topic}) failed to receive request topic.`)
@@ -152,10 +143,7 @@ export class Client {
       } else {
         const responseTopic = `_response/${requestTopic}`;
         try {
-          const resultMsg = await handler(
-            msg,
-            requestTopic.substring(0, requestTopic.lastIndexOf("/"))
-          );
+          const resultMsg = await handler(msg);
           return this.publish(responseTopic, resultMsg);
         } catch (error) {
           const status = error.status || 500;
@@ -171,7 +159,7 @@ export class Client {
     this.#handlerSubscriptions.push(subscription);
   }
 
-  async end() {
+  async end(): Promise<void> {
     await Promise.all(this.#handlerSubscriptions.map((handler) => handler.end()));
     await this.#client.end();
   }
@@ -180,25 +168,25 @@ export class Client {
 interface WrappedMqttClient {
     setOnMessage: (onMessage: OnMessageCallback) => void;
     subscribe: (topic: string) => Promise<ISubscriptionGrant[]>;
-    unsubscribe: (topic: string) => void;
-    publish: (topic: string, payload?: unknown, options?: IClientPublishOptions) => void;
+    unsubscribe: (topic: string) => Promise<void>;
+    publish: (topic: string, payload?: unknown, options?: IClientPublishOptions) => Promise<void>;
     end: () => Promise<void>;
 }
 function wrap(mqttClient: AsyncMqttClient): WrappedMqttClient {
     return {
-        setOnMessage: function (onMessage: OnMessageCallback) {
+        setOnMessage: function(onMessage: OnMessageCallback): void {
             mqttClient.on("message", onMessage);
         },
-        subscribe: function (topic: string) {
+        subscribe: function(topic: string): Promise<ISubscriptionGrant[]> {
             return mqttClient.subscribe(topic);
         },
-        unsubscribe: function (topic: string) {
+        unsubscribe: function(topic: string): Promise<void> {
             return mqttClient.unsubscribe(topic);
         },
-        publish: function (topic: string, payload: unknown, options: IClientPublishOptions) {
+        publish: function(topic: string, payload: unknown, options: IClientPublishOptions = {}): Promise<void> {
             return mqttClient.publish(topic, JSON.stringify(payload), options);
         },
-        end: function () {
+        end: async function(): Promise<void> {
             return mqttClient.end();
         }
     };
@@ -216,7 +204,6 @@ export function connect(uri: string, options: IClientOptions & { onConnected?: (
                 connectTimeout: 2000,
                 resubscribe: true,
                 onConnected: () => {},
-                onConnectionLost: () => {},
             },
             otherOptions
         );

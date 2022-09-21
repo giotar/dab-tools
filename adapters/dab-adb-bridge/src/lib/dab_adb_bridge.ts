@@ -15,7 +15,7 @@
 
 import config from 'config';
 import {DabDeviceBase, DabResponse} from './dab/dab_device_base';
-import { AdbCommands } from './adb/adb_commands.js';
+import {AdbCommands} from './adb/adb_commands.js';
 import {adbAppStatusToDabAppState, getLogger} from "./util.js";
 import {AndroidApplicationStatus} from "./adb/app_status";
 import {APPLICATION_STATE_BACKGROUND, APPLICATION_STATE_STOPPED} from "./dab/dab_constants.js";
@@ -26,6 +26,7 @@ import {
     KeyPressRequest,
     StartDeviceTelemetryRequest
 } from "./dab/dab_requests";
+import {Application, DeviceInformationResponse, ListApplicationsResponse} from "./dab/dab_responses";
 
 const logger = getLogger();
 
@@ -40,7 +41,7 @@ export class DabDevice extends DabDeviceBase {
 
     }
 
-    override async deviceInfo(): Promise<DabResponse> {
+    override async deviceInfo(): Promise<DeviceInformationResponse> {
         const deviceInfo = await this.adb.getDeviceDetails();
 
         return {
@@ -51,22 +52,21 @@ export class DabDevice extends DabDeviceBase {
             chipset: deviceInfo.properties["ro.product.cpu.abi"],
             firmwareVersion: deviceInfo.properties["ro.build.fingerprint"],
             firmwareBuild: deviceInfo.properties["ro.build.fingerprint"],
-            networkInterfaces: {
+            networkInterfaces: [{
                 connected: deviceInfo.networkType !== "other",
                 macAddress: deviceInfo.mac,
                 ipAddress: deviceInfo.ip,
                 type: deviceInfo.networkType,
-            },
+            }],
             screenWidthPixels: deviceInfo.resolution.x,
             screenHeightPixels: deviceInfo.resolution.y,
-            uptimeSeconds: await this.adb.getDeviceUptimeSeconds(),
-            isRetail: undefined
+            uptimeSince: await this.adb.getDeviceUptimeSeconds(),
         };
     }
 
-    override listApps = async () => {
+    override async listApps(): Promise<ListApplicationsResponse | DabResponse> {
         try {
-            const appArr = [];
+            const appArr: Application[] = [];
             const packageArr = await this.adb.getPackages();
             for (let appId of Object.keys(this.appMap)) {
                 if (Array.isArray(this.appMap[appId])) {
@@ -75,7 +75,7 @@ export class DabDevice extends DabDeviceBase {
                         if (packageArr.includes(implObj.package)) {
                             this.appMap[appId] = implObj;
                             logger.debug("App found, pushing to appArr");
-                            appArr.push({id: appId, friendlyName: this.appMap[appId].friendlyName, version: "unknown"});
+                            appArr.push({appId: appId, friendlyName: this.appMap[appId].friendlyName, version: "unknown"});
                             break;
                         } else {
                             logger.debug("App not found, ignoring");
@@ -85,20 +85,20 @@ export class DabDevice extends DabDeviceBase {
                     logger.debug(`Checking packages for appId: ${appId} with package ${this.appMap[appId].package}`);
                     if (packageArr.includes(this.appMap[appId].package)) {
                         logger.debug("App found, pushing to appArr");
-                        appArr.push({id: appId, friendlyName: this.appMap[appId].friendlyName, version: "unknown"});
+                        appArr.push({appId: appId, friendlyName: this.appMap[appId].friendlyName, version: "unknown"});
                     } else {
                         logger.debug("App not found, ignoring");
                     }
                 }
             }
-            return { ...this.dabResponse(), ...{apps: appArr} };
+            return { ...this.dabResponse(), ...{applications: appArr} };
         } catch (e) {
             logger.error(e);
             return this.dabResponse(500, e.message);
         }
     }
 
-    override launchApp = async (data: AdbBridgeLaunchApplicationRequest) => {
+    override async launchApp(data: AdbBridgeLaunchApplicationRequest): Promise<DabResponse> {
         if (typeof data.appId !== "string")
             return this.dabResponse(400, "'appId' must be set as the application id to launch");
 
@@ -127,7 +127,7 @@ export class DabDevice extends DabDeviceBase {
         }
     }
 
-    override exitApp = async (data: ExitApplicationRequest) => {
+    override async exitApp(data: ExitApplicationRequest) {
         if (typeof data.appId !== "string")
             return this.dabResponse(400, "'appId' must be set as the application id to exit");
 
@@ -161,7 +161,7 @@ export class DabDevice extends DabDeviceBase {
         }
     }
 
-    override getAppState = async (data: GetApplicationStateRequest) => {
+    override async getAppState(data: GetApplicationStateRequest) {
         if (typeof data.appId !== "string")
             return this.dabResponse(400, "'appId' must be set as the application id to query");
         try {
@@ -177,7 +177,7 @@ export class DabDevice extends DabDeviceBase {
         }
     }
 
-    override restartDevice = async () => {
+    override async restartDevice() {
         const handleReboot = async () => {
             await this.notify("warn", "Device is rebooting and will be temporarily offline");
             await this.adb.reboot();
@@ -187,7 +187,7 @@ export class DabDevice extends DabDeviceBase {
         return this.dabResponse(202);
     }
 
-    override keyPress = async (data: KeyPressRequest) => {
+    override async keyPress(data: KeyPressRequest) {
         if (typeof data.keyCode !== "string")
             return this.dabResponse(400, "'keyCode' must be set");
 
@@ -202,7 +202,7 @@ export class DabDevice extends DabDeviceBase {
         }
     }
 
-    override startDeviceTelemetry = async (data: StartDeviceTelemetryRequest) => {
+    override async startDeviceTelemetry(data: StartDeviceTelemetryRequest) {
         if (typeof data.frequency !== "number" || !Number.isInteger(data.frequency))
             return this.dabResponse(400, "'frequency' must be set as number of milliseconds between updates");
 
@@ -217,11 +217,11 @@ export class DabDevice extends DabDeviceBase {
         })
     };
 
-    override stopDeviceTelemetry = async () => {
+    override async stopDeviceTelemetry() {
         return await this.stopDeviceTelemetryImpl();
     };
 
-    override healthCheck = async () => {
+    override async healthCheck() {
         try {
             return {...this.dabResponse(), healthy: await this.adb.getDeviceUptimeSeconds()};
         } catch (err) {

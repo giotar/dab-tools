@@ -17,22 +17,20 @@ import {Client, connect} from './client.js';
 import {DabResponse} from "../dab/dab_device_interface";
 import {IClientPublishOptions} from "mqtt";
 
-export type HandlerFunction = (message: unknown, requestId: string) => Promise<DabResponse>;
+export type HandlerFunction = (message: any) => Promise<DabResponse>;
 export interface Handler {
     path: string;
     handler: HandlerFunction
 }
 
 export interface HandlerSubscription {
-    end: () => void;
+    end: () => Promise<void>;
 }
 
 export class MqttClient {
-
     #started: boolean;
     #handlers: Handler[];
-    #mqtt: Client;
-    sub: HandlerSubscription;
+    #mqtt!: Client;
 
     constructor() {
         this.#started = false;
@@ -49,7 +47,7 @@ export class MqttClient {
     /**
      * Publishes a request to a topic and waits for a response or timeout to occur
      */
-    request(topic: string, payload?: any, options?: any) {
+    request(topic: string, payload?: any, options?: any): Promise<any> {
         return this.#mqtt.request.call(this.#mqtt, topic, payload, options);
     }
 
@@ -57,7 +55,7 @@ export class MqttClient {
      * Subscribes to a topic, invoking callback function on each new message
      * until subscription.end() is called
      */
-    subscribe(topic: string, callback: (message: DabResponse) => Promise<void>): HandlerSubscription {
+    subscribe(topic: string, callback: (message: DabResponse) => Promise<void>): Promise<HandlerSubscription> {
         return this.#mqtt.subscribe(topic, callback);
     }
 
@@ -67,12 +65,12 @@ export class MqttClient {
      * @param  {string} topic
      * @param  {number} [timeoutMs]
      */
-    subscribeOnce(topic: string, timeoutMs = 2000) {
+    subscribeOnce(topic: string, timeoutMs = 2000): Promise<any> {
         return new Promise( async (resolve, reject) => {
             const timer = setTimeout(() => reject(new Error(`Failed to receive response from ${topic} within ${timeoutMs}ms`)), timeoutMs);
-            this.sub = this.subscribe(
+            const subscription = await this.subscribe(
                 topic, async (message) => {
-                    await this.sub.end();
+                    await subscription.end();
                     clearTimeout(timer);
                     return resolve(message);
                 }
@@ -89,9 +87,6 @@ export class MqttClient {
 
     /**
      * Publishes a retained message to a topic
-     * @param  {string} topic
-     * @param  {{}} payload
-     * @param  {MqttOptions} [options]
      */
     publishRetained(topic: string, payload: unknown, options: IClientPublishOptions= {}) {
         options = Object.assign(options, { retain: true });
@@ -100,8 +95,6 @@ export class MqttClient {
 
     /**
      * Removes a previously published retained message from a topic
-     * @param  {string} topic
-     * @param  {MqttOptions} [options]
      */
     clearRetained(topic: string, options: IClientPublishOptions= {}) {
         options = Object.assign(options, { retain: true });
@@ -116,7 +109,7 @@ export class MqttClient {
         if (!this.#started) {
             this.#started = true;
             this.#mqtt = await connect(uri);
-            this.#attachHandlers(this.#handlers);
+            await this.attachHandlers(this.#handlers);
         } else {
             throw new Error("init can only be called once!");
         }
@@ -132,11 +125,12 @@ export class MqttClient {
         }
     }
 
-    #attachHandlers(handlers: Handler[]) {
-        handlers.forEach(({ path, handler }) => {
-            this.#mqtt.handle(path, async (message: unknown, requestId: string) => {
-                return await handler(message, requestId);
+    private async attachHandlers(handlers: Handler[]): Promise<void[]> {
+        const handlerRegistrations = handlers.map(({ path, handler }) => {
+            return this.#mqtt.handle(path, async (message: unknown) => {
+                return await handler(message);
             });
         });
+        return Promise.all(handlerRegistrations);
     }
 }
