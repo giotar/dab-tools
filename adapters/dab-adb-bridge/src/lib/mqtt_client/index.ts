@@ -37,7 +37,6 @@ export class MqttClient {
     constructor() {
         this.#started = false;
         this.#handlers = [];
-        this.#mqtt = null;
     }
 
     /**

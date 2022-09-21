@@ -33,8 +33,13 @@ export interface DabResponse {
 
 export type NotificationLevel = "info" | "warn" | "debug" | "trace" | "error";
 
+interface Telemetry {
+    device?: NodeJS.Timer;
+    [appId: string]: NodeJS.Timer | undefined;
+}
+
 export abstract class DabDeviceBase {
-    private telemetry: {device?: NodeJS.Timeout, [appId: string]: NodeJS.Timeout};
+    private telemetry: Telemetry;
     private client: MqttClient;
     /**
      * Constructor for DabDeviceInterface

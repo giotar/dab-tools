@@ -222,6 +222,10 @@ export class DabDevice extends DabDeviceBase {
     };
 
     override healthCheck = async () => {
-        return { ...this.dabResponse(), ...{healthy: typeof (await this.adb.getDeviceUptimeSeconds()) === "number" } };
+        try {
+            return {...this.dabResponse(), healthy: await this.adb.getDeviceUptimeSeconds()};
+        } catch (err) {
+            return {...this.dabResponse(), healthy: false};
+        }
     }
 }

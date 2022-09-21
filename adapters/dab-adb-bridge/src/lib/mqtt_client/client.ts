@@ -207,7 +207,7 @@ function wrap(mqttClient: AsyncMqttClient): WrappedMqttClient {
 /**
  * Makes a mqtt connection and returns a async mqtt client.
  */
-export function connect(uri: string, options: IClientOptions & { onConnectionLost?: () => void, onConnected?: () => unknown} = {}): Promise<Client> {
+export function connect(uri: string, options: IClientOptions & { onConnected?: () => unknown} = {}): Promise<Client> {
     return new Promise((resolve, reject) => {
         const { keepalive = 10, ...otherOptions } = options;
         options = Object.assign(
@@ -234,13 +234,14 @@ export function connect(uri: string, options: IClientOptions & { onConnectionLos
         };
 
         mqttClient.on("error", onError);
-        mqttClient.on("offline", options.onConnectionLost);
         mqttClient.on("connect", () => {
             if (!initialized) {
                 connected = true;
                 mqttClient.removeListener("error", onError);
                 resolve(new Client(wrap(mqttClient)));
-                options.onConnected();
+                if (options.onConnected) {
+                    options.onConnected();
+                }
             }
 
             initialized = true;
