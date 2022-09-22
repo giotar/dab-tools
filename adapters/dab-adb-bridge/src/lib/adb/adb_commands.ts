@@ -24,7 +24,22 @@ process.on("unhandledRejection", (reason, p) => {
     logger.debug("Unhandled Rejection at: Promise ", p, " reason: ", reason);
 });
 
-type Device = any
+interface Device {
+    id: string,
+    state: string,
+    connection?: string,
+    ip?: string | string[],
+    mac?: string | string[],
+    networkType: NetworkInterfaceType,
+    serial?: string,
+    resolution: {
+        x?: number,
+        y?: number
+    },
+    message?: string,
+    properties?: Record<string, any>,
+    useStatus2?: boolean,
+}
 export enum NetworkInterfaceType {
     Wifi = "wifi",
     Ethernet = "ethernet",
@@ -34,8 +49,8 @@ export enum NetworkInterfaceType {
 
 export class AdbCommands {
     private static readonly VALID_IP_REGEX = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(:\d+)?$/
-    private adb: string;
-    private device: Device;
+    private readonly adb: string;
+    private readonly device: Device;
     constructor(deviceId: string) {
         //Latest Linux ADB app is downloaded from https://developer.android.com/studio/releases/platform-tools.html
         this.adb = config.get("adb.binary");
@@ -46,7 +61,7 @@ export class AdbCommands {
             connection: undefined,
             ip: undefined,
             mac: undefined,
-            networkType: "unknown",
+            networkType: NetworkInterfaceType.Unknown,
             serial: undefined,
             resolution: {
                 x: undefined,
@@ -68,30 +83,30 @@ export class AdbCommands {
         }
     }
 
-    async init(): Promise<void> {
+    public async init(): Promise<void> {
         await this.devices();
         if (this.device.connection === "tcp") await this.connect();
     }
 
-    async getDeviceDetails(): Promise<Device> {
+    public async getDeviceDetails(): Promise<Device> {
         await this.init();
         return this.device;
     }
 
-    async killServer() {
+    public async killServer() {
         logger.info("Terminating ADB Server");
         await spawn(this.adb, ["kill-server"]);
         return { message: `Killed adb at ${config.get("adb.binary")}` };
     }
 
-    async disconnect(): Promise<void> {
+    public async disconnect(): Promise<void> {
         logger.info(`Disconnecting: ${this.device.ip}`);
         await spawn(this.adb, ["disconnect", this.device.id], {
             encoding: "utf8",
         });
     }
 
-    async connect(): Promise<void> {
+    private async connect(): Promise<void> {
         if (!AdbCommands.VALID_IP_REGEX.test(this.device.id)) {
             throw new Error(`ADB connect request appears to be an invalid address: ${this.device.id}`);
         }
@@ -137,7 +152,7 @@ export class AdbCommands {
         }
     }
 
-    async devices(): Promise<void> {
+    private async devices(): Promise<void> {
         let foundDevice = false;
         try {
             const output = await spawn(this.adb, ["devices", "-l"], { encoding: "utf8" });
@@ -178,7 +193,7 @@ export class AdbCommands {
                             if (!this.device.serial) {
                                 this.device.serial = this.device.properties["ro.boot.serialno"];
                             }
-                            if (this.device.id.startsWith(this.device.ip)) {
+                            if (!Array.isArray(this.device.ip) && this.device.ip && this.device.id.startsWith(this.device.ip)) {
                                 this.device.networkType = await this.getNetworkType();
                             } else {
                                 this.device.networkType = NetworkInterfaceType.Other;
@@ -237,7 +252,7 @@ export class AdbCommands {
         }
     }
 
-    async getDeviceProps(): Promise<Record<string, unknown>> {
+    private async getDeviceProps(): Promise<Record<string, unknown>> {
         logger.info(`Getting device properties for ${this.device.id}`);
         try {
             const output = await spawn(
@@ -275,7 +290,7 @@ export class AdbCommands {
         }
     }
 
-    async getDeviceUptimeSeconds(): Promise<number> {
+    public async getDeviceUptimeSeconds(): Promise<number> {
         logger.info(`Getting device uptime for ${this.device.id}`);
         try {
             const output = await spawn(
@@ -300,7 +315,7 @@ export class AdbCommands {
         }
     }
 
-    async getNetworkType(): Promise<NetworkInterfaceType> {
+    private async getNetworkType(): Promise<NetworkInterfaceType> {
         logger.info(`Getting device active NIC type for ${this.device.id}`);
         try {
             const output = await spawn(
@@ -332,7 +347,7 @@ export class AdbCommands {
         }
     }
 
-    async getDeviceIpsFromSerial(): Promise<string[]> {
+    private async getDeviceIpsFromSerial(): Promise<string[]> {
         logger.info(`Getting IPs for ${this.device.serial}`);
         try {
             const output = await spawn(this.adb, ["-s", this.device.id, "shell", "ifconfig"], {
@@ -358,7 +373,7 @@ export class AdbCommands {
         }
     }
 
-    async getDeviceMacFromIp(ipAddress: string): Promise<string> {
+    private async getDeviceMacFromIp(ipAddress: string): Promise<string> {
         logger.info(`Getting MAC for ${ipAddress}`);
         try {
             const output: Output = await spawn(this.adb, ["-s", this.device.id, "shell", "ip", "address"], {
@@ -391,7 +406,7 @@ export class AdbCommands {
         }
     }
 
-    async getPackages(): Promise<string[]> {
+    public async getPackages(): Promise<string[]> {
         logger.info(`Retrieve package list on ${this.device.id}`);
         const output = await spawn(
             this.adb,
@@ -415,7 +430,7 @@ export class AdbCommands {
             .split("\n");
     }
 
-    async start(intentArr: string[]): Promise<void> {
+    public async start(intentArr: string[]): Promise<void> {
         if (!intentArr) throw new Error("Intent to start was not specified");
 
         let startArgs = [ ...["-s", this.device.id, "shell", "am", "start"], ...intentArr ];
@@ -453,7 +468,7 @@ export class AdbCommands {
         }
     }
 
-    async stop(appPackage: string): Promise<void> {
+    public async stop(appPackage: string): Promise<void> {
          if (appPackage.trim() === "") {
             throw new Error("App package to stop was not specified");
         }
@@ -483,11 +498,11 @@ export class AdbCommands {
         }
     }
 
-    async backgroundApp(appPackage: string): Promise<void> {
+    public async backgroundApp(appPackage: string): Promise<void> {
         logger.debug(`Backgrounding current app on ${this.device.id}`);
         const {stderr } = await spawn(
             this.adb,
-            ["-s", this.device.id, "shell", "input", "keyevent", AndroidKeyCode.KEYCODE_HOME],
+            ["-s", this.device.id, "shell", "input", "keyevent", AndroidKeyCode.KEYCODE_HOME.toString()],
             { encoding: "utf8" }
         );
         if (!stderr) {
@@ -647,7 +662,7 @@ export class AdbCommands {
         return state;
     }
 
-    async sendKey(keyCode: DabKey) {
+    public async sendKey(keyCode: DabKey) {
         let keyVal = DabKeysToAndroidKeyCodes[keyCode];
         if (isNaN(keyVal)) {
             throw new Error(
@@ -658,7 +673,7 @@ export class AdbCommands {
         logger.debug(`Typing key event ${keyCode} as input on ${this.device.id}`);
         const output = await spawn(
             this.adb,
-            ["-s", this.device.id, "shell", "input", "keyevent", keyVal],
+            ["-s", this.device.id, "shell", "input", "keyevent", keyVal.toString()],
             {
                 encoding: "utf8",
             }
@@ -675,7 +690,7 @@ export class AdbCommands {
         logger.info(`Typed key on ${this.device.id}: ${stdout}`);
     }
 
-    async reboot() {
+    public async reboot() {
         return new Promise<void>(async (resolve, reject) => {
             logger.info(`Rebooting ${this.device.id}`);
             spawn(this.adb, ["-s", this.device.id, "reboot"], {
@@ -704,7 +719,7 @@ export class AdbCommands {
         })
     }
 
-    async top() {
+    public async top() {
         logger.debug(`Running top on ${this.device.id}`);
         const output = await spawn(this.adb, ["-s", this.device.id, "shell", "top", "-n", "1"], {
             encoding: "utf8",

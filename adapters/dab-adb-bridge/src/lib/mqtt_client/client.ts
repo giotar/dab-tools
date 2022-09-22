@@ -28,27 +28,28 @@ import {EventEmitter2, ListenerFn} from 'eventemitter2';
 import {IClientPublishOptions} from "mqtt";
 import {IPublishPacket} from "mqtt-packet";
 import {HandlerFunction, HandlerSubscription} from "./index";
-import {clearTimeout} from "timers";
+import { setTimeout, clearTimeout } from "timers";
 
 export class Client {
-    #client: WrappedMqttClient;
-    #emitter: EventEmitter2;
-    #handlerSubscriptions: HandlerSubscription[];
+    private static readonly DEFAULT_PUBLISH_OPTIONS = { qos: 2, retain: false };
+    private client: WrappedMqttClient;
+    private emitter: EventEmitter2;
+    private handlerSubscriptions: HandlerSubscription[];
 
   /**
    *  A generic construct that takes in an async mqtt client.
    */
-  constructor(mqttClient: WrappedMqttClient) {
-    this.#client = mqttClient;
-    this.#emitter = new EventEmitter2({
+  public constructor(mqttClient: WrappedMqttClient) {
+    this.client = mqttClient;
+    this.emitter = new EventEmitter2({
       wildcard: true,
       delimiter: "/",
       verboseMemoryLeak: true,
     });
 
-    this.#handlerSubscriptions = [];
+    this.handlerSubscriptions = [];
 
-    this.#client.setOnMessage(this.handleMessage.bind(this));
+    this.client.setOnMessage(this.handleMessage.bind(this));
   }
 
   /**
@@ -71,26 +72,25 @@ export class Client {
         };
       }
     }
-    this.#emitter.emit(topic, response, pkt);
+    this.emitter.emit(topic, response, pkt);
   }
 
   public async publish(topic: string, msg?: unknown, options: IClientPublishOptions = {}): Promise<void> {
-    const defaultOptions = { qos: 2, retain: false };
-    options = Object.assign(defaultOptions, options);
+    options = Object.assign({}, Client.DEFAULT_PUBLISH_OPTIONS, options);
 
-    return this.#client.publish(topic, msg, options);
+    return this.client.publish(topic, msg, options);
   }
 
   public async subscribe(topic: string, callback: ListenerFn): Promise<HandlerSubscription> {
     const event = convertPattern(topic);
-    this.#emitter.on(event, callback);
-    await this.#client.subscribe(topic);
+    this.emitter.on(event, callback);
+    await this.client.subscribe(topic);
 
     return {
       end: async () => {
-        this.#emitter.removeListener(event, callback);
-        if (this.#emitter.listeners(event).length === 0) {
-          await this.#client.unsubscribe(topic);
+        this.emitter.removeListener(event, callback);
+        if (this.emitter.listeners(event).length === 0) {
+          await this.client.unsubscribe(topic);
         }
       },
     };
@@ -134,7 +134,7 @@ export class Client {
   /**
    * Register a handler for messages to the specified topic.
    */
-  async handle(topic: string, handler: HandlerFunction): Promise<void> {
+  public async handle(topic: string, handler: HandlerFunction): Promise<void> {
     const subscription = await this.subscribe(`${topic}/+`, async (msg, { topic: requestTopic }) => {
       if (!requestTopic) {
         return Promise.reject(
@@ -156,12 +156,12 @@ export class Client {
       }
     });
 
-    this.#handlerSubscriptions.push(subscription);
+    this.handlerSubscriptions.push(subscription);
   }
 
-  async end(): Promise<void> {
-    await Promise.all(this.#handlerSubscriptions.map((handler) => handler.end()));
-    await this.#client.end();
+  public async end(): Promise<void> {
+    await Promise.all(this.handlerSubscriptions.map((handler) => handler.end()));
+    await this.client.end();
   }
 }
 

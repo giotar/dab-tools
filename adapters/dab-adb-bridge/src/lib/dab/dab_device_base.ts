@@ -24,12 +24,13 @@ import {
     StartApplicationTelemetryRequest, StartDeviceTelemetryRequest,
     StopApplicationTelemetryRequest
 } from "./dab_requests";
-import {DeviceInformationResponse, ListApplicationsResponse, VersionResponse, HealthCheckResponse} from "./dab_responses";
-
-export interface DabResponse {
-    status: number;
-    error?: string;
-}
+import {
+    DabResponse,
+    DeviceInformationResponse, GetApplicationStateResponse, KeyPressResponse,
+    ListApplicationsResponse, RestartResponse, StartApplicationTelemetryResponse,
+    StartDeviceTelemetryResponse, StopApplicationTelemetryResponse, StopDeviceTelemetryResponse,
+    VersionResponse, HealthCheckResponse
+} from "./dab_responses";
 
 export type NotificationLevel = "info" | "warn" | "debug" | "trace" | "error";
 
@@ -39,7 +40,7 @@ interface Telemetry {
 }
 
 export abstract class DabDeviceBase {
-    private telemetry: Telemetry;
+    private readonly telemetry: Telemetry;
     private client!: MqttClient;
     /**
      * Constructor for DabDeviceInterface
@@ -52,7 +53,7 @@ export abstract class DabDeviceBase {
     /**
      * Init to be called once at application startup, unless following stop
      */
-    async init(uri: string) {
+    public async init(uri: string) {
         this.client = new MqttClient();
 
         //Pre-Init Handler Registration
@@ -74,7 +75,7 @@ export abstract class DabDeviceBase {
         //Start MQTT Client
         await this.client.init(uri);
 
-        //Post-Init publishing of retained messages and inital notifications
+        //Post-Init publishing of retained messages and initial notifications
         await Promise.all(
             [
                 this.client.publishRetained(topics.DAB_VERSION_TOPIC, this.version()),
@@ -149,7 +150,7 @@ export abstract class DabDeviceBase {
      * @param {TelemetryCallback} cb - callback to generate/collect telemetry
      * @returns {Promise<DabResponse>}
      */
-    async startDeviceTelemetryImpl(data: StartDeviceTelemetryRequest, cb: () => Promise<unknown>) {
+    async startDeviceTelemetryImpl(data: StartDeviceTelemetryRequest, cb: () => unknown): Promise<StartDeviceTelemetryResponse | DabResponse> {
         if (!Number.isInteger(data.frequency))
             return this.dabResponse(400, "'frequency' must be set as number of milliseconds between updates");
 
@@ -173,7 +174,7 @@ export abstract class DabDeviceBase {
      * stopDeviceTelemetry().
      * @returns {Promise<DabResponse>}
      */
-    stopDeviceTelemetryImpl = async () => {
+    stopDeviceTelemetryImpl = async (): Promise<StopDeviceTelemetryResponse> => {
         if (!this.telemetry.device) {
             return this.dabResponse(400, "Device telemetry not started");
         } else {
@@ -195,7 +196,7 @@ export abstract class DabDeviceBase {
      * @param {TelemetryCallback} cb - callback to generate/collect telemetry
      * @returns {Promise<DabResponse>}
      */
-    async startAppTelemetryImpl(data: StartApplicationTelemetryRequest, cb: () => Promise<void>) {
+    async startAppTelemetryImpl(data: StartApplicationTelemetryRequest, cb: () => Promise<void>): Promise<StartApplicationTelemetryResponse | DabResponse> {
         if (typeof cb !== "function") return this.dabResponse(400, "App telemetry callback is not a function");
 
         if (typeof data.appId !== "string")
@@ -226,7 +227,7 @@ export abstract class DabDeviceBase {
      * @param {string} data.app - application id to stop sending telemetry
      * @returns {Promise<DabResponse>}
      */
-    stopAppTelemetryImpl = async (data: StopApplicationTelemetryRequest) => {
+    stopAppTelemetryImpl = async (data: StopApplicationTelemetryRequest): Promise<StopApplicationTelemetryResponse> => {
         if (typeof data.appId !== "string")
             return this.dabResponse(400, "'app' must be set as the application id to stop sending telemetry");
 
@@ -310,7 +311,7 @@ export abstract class DabDeviceBase {
         return {status: 501, error: "Exit app not implemented"};
     }
 
-    async getAppState(data: GetApplicationStateRequest): Promise<DabResponse> {
+    async getAppState(data: GetApplicationStateRequest): Promise<DabResponse | GetApplicationStateResponse> {
         return {status: 501, error: "Get app state not implemented"};
     }
 
@@ -319,7 +320,7 @@ export abstract class DabDeviceBase {
      * @abstract
      * @returns {Promise<DabResponse>}
      */
-    async restartDevice(): Promise<DabResponse> {
+    async restartDevice(): Promise<RestartResponse> {
         return {status: 501, error: "Restart not implemented"};
     }
 
@@ -331,7 +332,7 @@ export abstract class DabDeviceBase {
      * @param {string} data.keyCode - string literal, prefixed with KEY_ or KEY_CUSTOM_ per spec
      * @returns {Promise<DabResponse>}
      */
-    async keyPress(data: KeyPressRequest): Promise<DabResponse> {
+    async keyPress(data: KeyPressRequest): Promise<KeyPressResponse> {
         return {status: 501, error: "Key press not implemented"};
     }
 
@@ -344,7 +345,7 @@ export abstract class DabDeviceBase {
      * @param {string} [data.durationMs] - delay between key down and up events
      * @returns {Promise<DabResponse>}
      */
-    async keyPressLong(data: LongKeyPressRequest): Promise<DabResponse> {
+    async keyPressLong(data: LongKeyPressRequest): Promise<KeyPressResponse> {
         return {status: 501, error: "Long key press not implemented"};
     }
 

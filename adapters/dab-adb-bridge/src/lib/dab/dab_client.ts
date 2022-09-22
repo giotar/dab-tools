@@ -39,11 +39,11 @@ export class DabClient {
     /**
      Sample DAB client based on the DabMqttClient implementation
      */
-    constructor(dab_mqtt_client: MqttClient) {
+    public constructor(dab_mqtt_client: MqttClient) {
         this.client = dab_mqtt_client;
     }
 
-    async showMessages(): Promise<void> {
+    public async showMessages(): Promise<void> {
         this.messagesSub = await this.client.subscribe(
             topics.DAB_MESSAGES, async (message) => {
                 console.log(`DAB message: ${JSON.stringify(message)}\n`);
@@ -51,11 +51,11 @@ export class DabClient {
         );
     }
 
-    async hideMessages() {
+    public async hideMessages() {
         if (this.messagesSub) await this.messagesSub.end();
     }
 
-    async showDeviceTelemetry(): Promise<void> {
+    public async showDeviceTelemetry(): Promise<void> {
         this.deviceTelemetrySub = await this.client.subscribe(
             topics.TELEMETRY_METRICS_TOPIC, async (message) => {
                 console.log(`Device telemetry: ${JSON.stringify(message, null, 2)}\n`);
@@ -63,11 +63,11 @@ export class DabClient {
         );
     }
 
-    async hideDeviceTelemetry() {
+    public async hideDeviceTelemetry() {
         if (this.deviceTelemetrySub) await this.deviceTelemetrySub.end();
     }
 
-    async showAppTelemetry(): Promise<void> {
+    public async showAppTelemetry(): Promise<void> {
         this.appTelemetrySub = await this.client.subscribe(
             `topics.TELEMETRY_METRICS_TOPIC/+`, async (message) => {
                 console.log(`App telemetry: ${JSON.stringify(message, null, 2)}\n`);
@@ -75,25 +75,25 @@ export class DabClient {
         );
     }
 
-    async hideAppTelemetry() {
+    public async hideAppTelemetry() {
         if (this.appTelemetrySub) await this.appTelemetrySub.end();
     }
 
-    async version(): Promise<VersionResponse> {
+    public async version(): Promise<VersionResponse> {
         return await this.client.subscribeOnce(topics.DAB_VERSION_TOPIC);
     }
 
-    async deviceInfo(): Promise<DeviceInformationResponse> {
+    public async deviceInfo(): Promise<DeviceInformationResponse> {
         return await this.client.subscribeOnce(topics.DEVICE_INFO_TOPIC);
     }
 
-    async listApps(): Promise<ListApplicationsResponse> {
+    public async listApps(): Promise<ListApplicationsResponse> {
         return await this.client.request(
             topics.APPLICATIONS_LIST_TOPIC
         )
     }
 
-    async exitApp(appId: string, force=false): Promise<ExitApplicationResponse> {
+    public async exitApp(appId: string, force=false): Promise<ExitApplicationResponse> {
         return await this.client.request(
             topics.APPLICATIONS_EXIT_TOPIC,
             {
@@ -103,7 +103,7 @@ export class DabClient {
         )
     }
 
-    async launchApp(appId: string, parameters?: string[] | string): Promise<LaunchApplicationResponse> {
+    public async launchApp(appId: string, parameters?: string[] | string): Promise<LaunchApplicationResponse> {
         return await this.client.request(
             topics.APPLICATIONS_LAUNCH_TOPIC,
             {
@@ -113,7 +113,7 @@ export class DabClient {
         )
     }
 
-    async pressKey(keyCode: DabKey): Promise<KeyPressResponse> {
+    public async pressKey(keyCode: DabKey): Promise<KeyPressResponse> {
         return await this.client.request(
             topics.INPUT_KEY_PRESS_TOPIC,
             {
@@ -122,7 +122,7 @@ export class DabClient {
         )
     }
 
-    async pressKeyLong(keyCode: DabKey, durationMs: number): Promise<KeyPressResponse> {
+    public async pressKeyLong(keyCode: DabKey, durationMs: number): Promise<KeyPressResponse> {
         return await this.client.request(
             topics.INPUT_LONG_KEY_PRESS_TOPIC,
             {
@@ -132,7 +132,7 @@ export class DabClient {
         )
     }
 
-    async startDeviceTelemetry(frequency: number): Promise<StartDeviceTelemetryResponse> {
+    public async startDeviceTelemetry(frequency: number): Promise<StartDeviceTelemetryResponse> {
         return await this.client.request(
             topics.DEVICE_TELEMETRY_START_TOPIC,
             {
@@ -141,13 +141,13 @@ export class DabClient {
         )
     }
 
-    async stopDeviceTelemetry(): Promise<StopDeviceTelemetryResponse> {
+    public async stopDeviceTelemetry(): Promise<StopDeviceTelemetryResponse> {
         return await this.client.request(
             topics.DEVICE_TELEMETRY_STOP_TOPIC
         )
     }
 
-    async startAppTelemetry(appId: string, frequency: number): Promise<StartApplicationTelemetryResponse> {
+    public async startAppTelemetry(appId: string, frequency: number): Promise<StartApplicationTelemetryResponse> {
         return await this.client.request(
             topics.APP_TELEMETRY_START_TOPIC,
             {
@@ -157,7 +157,7 @@ export class DabClient {
         )
     }
 
-    async stopAppTelemetry(appId: string): Promise<StopApplicationTelemetryResponse> {
+    public async stopAppTelemetry(appId: string): Promise<StopApplicationTelemetryResponse> {
         return await this.client.request(
             topics.APP_TELEMETRY_STOP_TOPIC,
             {
@@ -166,13 +166,13 @@ export class DabClient {
         )
     }
 
-    async restart(): Promise<RestartResponse> {
+    public async restart(): Promise<RestartResponse> {
         return await this.client.request(
             topics.SYSTEM_RESTART_TOPIC
         )
     }
 
-    async healthCheck(): Promise<HealthCheckResponse> {
+    public async healthCheck(): Promise<HealthCheckResponse> {
         return await this.client.request(
             topics.HEALTH_CHECK_TOPIC
         )

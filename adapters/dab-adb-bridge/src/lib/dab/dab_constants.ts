@@ -1,3 +1,5 @@
-export const APPLICATION_STATE_FOREGROUND = "FOREGROUND";
-export const APPLICATION_STATE_BACKGROUND = "BACKGROUND";
-export const APPLICATION_STATE_STOPPED = "STOPPED";
+export enum ApplicationState {
+    Foreground = "FOREGROUND",
+    Background = "BACKGROUND",
+    Stopped = "STOPPED",
+}

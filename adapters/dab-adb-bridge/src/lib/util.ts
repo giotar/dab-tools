@@ -15,13 +15,9 @@
 
 import bunyan from 'bunyan';
 import {readFileSync} from 'fs';
-import {
-  APPLICATION_STATE_BACKGROUND,
-  APPLICATION_STATE_FOREGROUND,
-  APPLICATION_STATE_STOPPED
-} from "./dab/dab_constants.js";
 import {AndroidApplicationStatus} from "./adb/app_status";
 import Logger from "bunyan";
+import {ApplicationState} from "./dab/dab_constants";
 
 export function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -30,11 +26,11 @@ export function sleep(ms: number) {
 export function adbAppStatusToDabAppState(appStatus: AndroidApplicationStatus) {
   switch (appStatus) {
     case AndroidApplicationStatus.Running:
-      return APPLICATION_STATE_FOREGROUND;
+      return ApplicationState.Foreground;
     case AndroidApplicationStatus.Hidden:
-      return APPLICATION_STATE_BACKGROUND
+      return ApplicationState.Background;
     case AndroidApplicationStatus.Stopped:
-      return APPLICATION_STATE_STOPPED;
+      return ApplicationState.Stopped;
   }
 }
 

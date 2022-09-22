@@ -14,8 +14,8 @@
  */
 
 import {Client, connect} from './client.js';
-import {DabResponse} from "../dab/dab_device_interface";
 import {IClientPublishOptions} from "mqtt";
+import {DabResponse} from "../dab/dab_responses";
 
 export type HandlerFunction = (message: any) => Promise<DabResponse>;
 export interface Handler {
@@ -28,35 +28,35 @@ export interface HandlerSubscription {
 }
 
 export class MqttClient {
-    #started: boolean;
-    #handlers: Handler[];
-    #mqtt!: Client;
+    private started: boolean;
+    private readonly handlers: Handler[];
+    private mqtt!: Client;
 
     constructor() {
-        this.#started = false;
-        this.#handlers = [];
+        this.started = false;
+        this.handlers = [];
     }
 
     /**
      * Associates a function to process incoming requests with a specific topic
      */
-    handle(path: string, handler: HandlerFunction) {
-        this.#handlers.push({ path, handler });
+    public handle(path: string, handler: HandlerFunction): void {
+        this.handlers.push({ path, handler });
     }
 
     /**
      * Publishes a request to a topic and waits for a response or timeout to occur
      */
-    request(topic: string, payload?: any, options?: any): Promise<any> {
-        return this.#mqtt.request.call(this.#mqtt, topic, payload, options);
+    public request(topic: string, payload?: any, options?: any): Promise<any> {
+        return this.mqtt.request.call(this.mqtt, topic, payload, options);
     }
 
     /**
      * Subscribes to a topic, invoking callback function on each new message
      * until subscription.end() is called
      */
-    subscribe(topic: string, callback: (message: DabResponse) => Promise<void>): Promise<HandlerSubscription> {
-        return this.#mqtt.subscribe(topic, callback);
+    public subscribe(topic: string, callback: (message: DabResponse) => Promise<void>): Promise<HandlerSubscription> {
+        return this.mqtt.subscribe(topic, callback);
     }
 
     /**
@@ -65,14 +65,14 @@ export class MqttClient {
      * @param  {string} topic
      * @param  {number} [timeoutMs]
      */
-    subscribeOnce(topic: string, timeoutMs = 2000): Promise<any> {
+    public subscribeOnce(topic: string, timeoutMs = 2000): Promise<any> {
         return new Promise( async (resolve, reject) => {
             const timer = setTimeout(() => reject(new Error(`Failed to receive response from ${topic} within ${timeoutMs}ms`)), timeoutMs);
-            const subscription = await this.subscribe(
+            const subscription = this.subscribe(
                 topic, async (message) => {
-                    await subscription.end();
                     clearTimeout(timer);
-                    return resolve(message);
+                    resolve(message);
+                    subscription.then(s => s.end());
                 }
             );
         });
@@ -81,53 +81,53 @@ export class MqttClient {
     /**
      * Publishes a request to a topic where no response is expected
      */
-    publish(topic: string, payload?: unknown, options?: IClientPublishOptions) {
-        return this.#mqtt.publish(topic, payload, options);
+    public publish(topic: string, payload?: unknown, options?: IClientPublishOptions) {
+        return this.mqtt.publish(topic, payload, options);
     }
 
     /**
      * Publishes a retained message to a topic
      */
-    publishRetained(topic: string, payload: unknown, options: IClientPublishOptions= {}) {
+    public publishRetained(topic: string, payload: unknown, options: IClientPublishOptions= {}) {
         options = Object.assign(options, { retain: true });
-        return this.#mqtt.publish(topic, payload, options);
+        return this.mqtt.publish(topic, payload, options);
     }
 
     /**
      * Removes a previously published retained message from a topic
      */
-    clearRetained(topic: string, options: IClientPublishOptions= {}) {
+    public clearRetained(topic: string, options: IClientPublishOptions= {}) {
         options = Object.assign(options, { retain: true });
-        return this.#mqtt.publish(topic, undefined, options);
+        return this.mqtt.publish(topic, undefined, options);
     }
 
     /**
      * A single MqttClient should be created per application and init should be called once.
      * It will return once a connection to the MQTT broker is established, and does not time out.
      */
-    async init(uri: string) {
-        if (!this.#started) {
-            this.#started = true;
-            this.#mqtt = await connect(uri);
-            await this.attachHandlers(this.#handlers);
+    public async init(uri: string) {
+        if (!this.started) {
+            this.started = true;
+            this.mqtt = await connect(uri);
+            await this.attachHandlers(this.handlers);
         } else {
             throw new Error("init can only be called once!");
         }
 
-        this.#started = true;
+        this.started = true;
         return this;
     }
 
-    async stop() {
-        if (this.#started) {
-            await this.#mqtt.end();
-            this.#started = false;
+    public async stop() {
+        if (this.started) {
+            await this.mqtt.end();
+            this.started = false;
         }
     }
 
     private async attachHandlers(handlers: Handler[]): Promise<void[]> {
         const handlerRegistrations = handlers.map(({ path, handler }) => {
-            return this.#mqtt.handle(path, async (message: unknown) => {
+            return this.mqtt.handle(path, async (message: unknown) => {
                 return await handler(message);
             });
         });
