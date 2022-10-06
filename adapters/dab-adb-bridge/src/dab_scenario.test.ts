@@ -54,11 +54,16 @@ async function main() {
         console.log(`restart device: ${JSON.stringify(reboot_response)}\n`);
 
         let rebooting = true;
+        let rebootHealthChecks = 0;
         while(rebooting) {
+            if (rebootHealthChecks >= 20) {
+                throw new Error("Could not reestablish connection with device after restart");
+            }
             console.log("Waiting on reboot to complete...");
             await sleep(10 * 1000);
             const result = await dab_client.healthCheck();
             if (result.healthy) rebooting = false;
+            rebootHealthChecks++;
         }
         console.log("Reestablished control of device\n");
 
